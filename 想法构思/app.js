@@ -1,0 +1,14 @@
+const pages = document.querySelectorAll('.page');
+const navItems = document.querySelectorAll('[data-page]');
+const toast = document.querySelector('#toast');
+function showToast(message){ toast.textContent=message; toast.classList.add('show'); setTimeout(()=>toast.classList.remove('show'),2200); }
+function showPage(name){ pages.forEach(p=>p.classList.toggle('active-page',p.id===`${name}-page`)); document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.page===name)); window.scrollTo({top:0,behavior:'smooth'}); }
+navItems.forEach(item=>item.addEventListener('click',()=>showPage(item.dataset.page)));
+document.querySelectorAll('[data-view]').forEach(tab=>tab.addEventListener('click',()=>{document.querySelectorAll('.view-tab').forEach(t=>t.classList.remove('active'));tab.classList.add('active');showToast(`${tab.textContent}视图已切换`);}));
+const monthGrid=document.querySelector('#monthGrid');
+const events={2:['red'],6:['green'],7:['yellow'],9:['red','green'],14:['red','yellow','blue'],16:['green'],18:['green'],21:['red'],23:['yellow'],25:['red'],28:['green'],30:['red']};
+for(let i=0;i<35;i++){const day=i-1;const cell=document.createElement('div');cell.className='day'+(day===14?' today':'')+(i<2||i>32?' muted':'');cell.innerHTML=`<b>${i<2?[29,30][i]:i>32?i-32:day}</b><small>${day===14?'农历六月初一':day===23?'大暑':day===1?'建党节':day===6?'七七事变':'初'+((day%9)+1)}</small>`;if(events[day])cell.innerHTML+=`<div class="day-events">${events[day].map(e=>`<i class="event-mark ${e}"></i>`).join('')}</div>`;cell.addEventListener('click',()=>{if(day>0&&day<32){document.querySelector('#eventName').value='';document.querySelector('#eventModal').classList.add('open');}});monthGrid.appendChild(cell)}
+const modal=document.querySelector('#eventModal'); document.querySelector('#addEventBtn').onclick=()=>modal.classList.add('open'); document.querySelector('#newMatchBtn').onclick=()=>showToast('请选择一位好友开始匹配'); document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>modal.classList.remove('open')); document.querySelector('#saveEvent').onclick=()=>{modal.classList.remove('open');showToast('日程已保存');};
+document.querySelectorAll('.status-choice').forEach(choice=>choice.addEventListener('click',()=>{document.querySelectorAll('.status-choice').forEach(c=>c.classList.remove('selected'));choice.classList.add('selected');document.querySelector('.tail-control').classList.toggle('active',choice.classList.contains('yellow-choice'));}));
+document.querySelectorAll('.accept').forEach(btn=>btn.addEventListener('click',()=>{btn.closest('.invite-card').style.opacity='.45';btn.closest('.invite-card').querySelector('.status').textContent='已同意';btn.closest('.invite-card').querySelector('.status').className='status done';showToast(btn.dataset.toast);}));
+document.querySelectorAll('.match-friend').forEach(btn=>btn.addEventListener('click',()=>showToast('正在扫描双方完全空闲时间…')));

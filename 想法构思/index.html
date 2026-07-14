@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>想法构思 · 互通日历</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand"><span class="brand-mark">↔</span><span>互通日历</span></div>
+      <div class="profile-mini"><div class="avatar coral">林</div><div><b>林小满</b><small>杭州 · 今日状态良好</small></div><span class="more">•••</span></div>
+      <nav class="main-nav">
+        <button class="nav-item active" data-page="calendar"><span>▣</span>日程</button>
+        <button class="nav-item" data-page="match"><span>⌕</span>找时间<em>2</em></button>
+        <button class="nav-item" data-page="groups"><span>♧</span>群组</button>
+        <button class="nav-item" data-page="notifications"><span>♢</span>通知<em>3</em></button>
+      </nav>
+      <div class="sidebar-section"><label>我的日历</label><div class="side-row"><i class="dot red"></i>硬性事务</div><div class="side-row"><i class="dot green"></i>完全空闲</div><div class="side-row"><i class="dot yellow"></i>机动时间</div></div>
+      <div class="sidebar-bottom"><button class="nav-item" data-page="settings"><span>⚙</span>我的设置</button><div class="sync"><i></i> 已同步 · 刚刚</div></div>
+    </aside>
+
+    <main class="content">
+      <header class="topbar"><div class="mobile-brand"><span class="brand-mark">↔</span>互通日历</div><div class="top-actions"><button class="icon-btn">⌕</button><button class="icon-btn">◌</button><button class="avatar small">林</button></div></header>
+
+      <section id="calendar-page" class="page active-page">
+        <div class="page-heading"><div><p class="eyebrow">我的时间 · 2026年7月</p><h1>日程</h1></div><button class="primary-btn" id="addEventBtn">＋ 创建日程</button></div>
+        <div class="calendar-toolbar"><button class="month-switch">‹ <b>2026年7月</b> ›</button><div class="view-tabs"><button class="view-tab active" data-view="month">月</button><button class="view-tab" data-view="week">周</button><button class="view-tab" data-view="day">日</button><button class="view-tab" data-view="agenda">日程</button></div><button class="outline-btn">今天</button></div>
+        <div class="calendar-layout">
+          <div class="calendar-card"><div class="weekdays"><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span class="weekend">六</span><span class="weekend">日</span></div><div class="month-grid" id="monthGrid"></div><div class="calendar-legend"><span><i class="dot red"></i>硬性</span><span><i class="dot green"></i>空闲</span><span><i class="dot yellow"></i>机动</span><span><i class="dot blue"></i>待应答</span></div></div>
+          <aside class="day-panel"><div class="panel-title"><div><span class="eyebrow">周二 · 07月14日</span><h2>今天</h2></div><button class="round-btn">•••</button></div><div class="day-summary"><b>2</b><span>项硬性事务</span><strong>还有 4h 30m 可安排</strong></div><div class="timeline"><div class="time-row"><span>09:00</span><div class="free-line"><small>完全空闲</small></div></div><div class="time-row event-row"><span>10:00</span><div class="event red-event"><b>产品评审</b><small>10:00 — 11:30 · 工作</small></div></div><div class="time-row"><span>12:00</span><div class="free-line"><small>完全空闲</small></div></div><div class="time-row event-row"><span>14:00</span><div class="event yellow-event"><b>羽毛球</b><small>14:00 — 16:00 · 机动尾巴 30m</small></div></div><div class="time-row"><span>17:00</span><div class="free-line"><small>可约时间</small></div></div><div class="time-row event-row"><span>19:00</span><div class="event blue-event"><b>待应答 · 晚餐邀约</b><small>来自 周子昂 · 19:00 — 20:30</small></div></div></div><button class="secondary-btn full" data-page="match">查看待应答邀约 <span>2</span></button></aside>
+        </div>
+        <div class="insight-strip"><div class="insight-icon">✦</div><div><b>今天的节奏刚刚好</b><span>连续安排 1.5 小时，建议在 12:00 留出一点休息时间。</span></div><button class="text-btn">关闭提醒</button></div>
+      </section>
+
+      <section id="match-page" class="page"><div class="page-heading"><div><p class="eyebrow">一起安排，不用来回问</p><h1>找时间</h1></div><button class="primary-btn" id="newMatchBtn">＋ 发起邀约</button></div><div class="match-hero"><div><span class="pill orange">智能匹配</span><h2>谁的时间，刚好和你重合？</h2><p>选择好友，系统会优先扫描双方的完全空闲时间。</p></div><div class="match-orb">◷</div></div><div class="section-head"><h2>待应答邀约 <span class="count-badge">2</span></h2><button class="text-btn">全部查看</button></div><div class="invite-list"><article class="invite-card"><div class="invite-top"><div class="avatar blue-avatar">周</div><div><h3>周子昂 邀请你共进晚餐</h3><p>提议时间 · 07月14日 19:00 — 20:30</p></div><span class="status pending">待应答</span></div><div class="invite-info"><span>一起吃个新开的日料？</span><span>由 周子昂 发起</span></div><div class="invite-actions"><button class="ghost-btn">换个时间</button><button class="primary-btn accept" data-toast="已接受晚餐邀约">同意</button></div></article><article class="invite-card"><div class="invite-top"><div class="avatar purple-avatar">许</div><div><h3>许知远 邀请你打羽毛球</h3><p>提议时间 · 07月16日 18:30 — 20:00</p></div><span class="status pending">待应答</span></div><div class="invite-info"><span>双打还差一位，来吗？</span><span>由 许知远 发起</span></div><div class="invite-actions"><button class="ghost-btn">换个时间</button><button class="primary-btn accept" data-toast="已接受羽毛球邀约">同意</button></div></article></div><div class="section-head"><h2>好友</h2><button class="outline-btn">＋ 添加好友</button></div><div class="friend-grid"><div class="friend-card"><div class="avatar blue-avatar">周</div><b>周子昂</b><span><i class="dot green"></i>本周有 8 个空闲时段</span><button class="secondary-btn match-friend">找时间</button></div><div class="friend-card"><div class="avatar purple-avatar">许</div><b>许知远</b><span><i class="dot yellow"></i>有 3 个机动时段</span><button class="secondary-btn match-friend">找时间</button></div><div class="friend-card"><div class="avatar green-avatar">陈</div><b>陈一一</b><span><i class="dot green"></i>本周有 12 个空闲时段</span><button class="secondary-btn match-friend">找时间</button></div></div></section>
+
+      <section id="groups-page" class="page"><div class="page-heading"><div><p class="eyebrow">和一群人，约在同一个时间</p><h1>群组</h1></div><button class="primary-btn">＋ 新建活动</button></div><div class="group-tabs"><button class="active">我的群组</button><button>活动接龙</button></div><div class="group-list"><article class="group-card featured"><div class="group-cover"><span>羽毛球俱乐部</span><small>本周六 · 自动匹配</small></div><div class="group-body"><div class="avatars"><div class="avatar small blue-avatar">周</div><div class="avatar small purple-avatar">许</div><div class="avatar small green-avatar">陈</div><div class="avatar small coral">+4</div></div><h3>周末羽毛球约局</h3><p>最低 4 人 · 响应截止还有 18:42:10</p><div class="progress"><i style="width:75%"></i></div><div class="group-meta"><span>已接龙 <b>6/8</b></span><button class="primary-btn">我有空 / 参与接龙</button></div></div></article><article class="group-card"><div class="group-body"><div class="group-title"><div class="group-symbol orange-bg">食</div><div><h3>周五晚餐</h3><p>三里屯 · 固定时间</p></div><span class="status done">已成团</span></div><div class="confirmed-line"><span class="avatar tiny blue-avatar">周</span><span class="avatar tiny purple-avatar">许</span><span class="avatar tiny green-avatar">陈</span><span>4 人已确认</span><button class="text-btn">查看详情</button></div></div></article></div></section>
+
+      <section id="notifications-page" class="page"><div class="page-heading"><div><p class="eyebrow">重要的事，及时知道</p><h1>通知</h1></div><button class="text-btn">全部标为已处理</button></div><div class="notice-list"><div class="notice unread"><div class="notice-icon blue-bg">↗</div><div><b>周子昂发来一条邀约</b><p>晚餐 · 07月14日 19:00 — 20:30</p><small>刚刚</small></div><button class="more">•••</button></div><div class="notice unread"><div class="notice-icon orange-bg">♧</div><div><b>“周末羽毛球约局”达到成团人数</b><p>请确认拟定时间：07月18日 15:00</p><small>12分钟前</small></div><button class="more">•••</button></div><div class="notice"><div class="notice-icon gray-bg">✓</div><div><b>你的活动已同步</b><p>外部日历新增 3 条硬性事务</p><small>昨天 18:20</small></div><button class="more">•••</button></div></div></section>
+
+      <section id="settings-page" class="page"><div class="page-heading"><div><p class="eyebrow">让日历更像你的日历</p><h1>我的设置</h1></div></div><div class="settings-card"><div class="setting-profile"><div class="avatar large coral">林</div><div><h2>林小满</h2><p>linxiaoman@example.com</p></div><button class="outline-btn">编辑资料</button></div><div class="setting-row"><div><b>连续忙碌健康提醒</b><small>连续硬性事务超过 3 小时时提醒我</small></div><label class="switch"><input type="checkbox" checked><span></span></label></div><div class="setting-row"><div><b>默认导入分类</b><small>从文件导入的日程统一归类到</small></div><button class="select-btn">工作　⌄</button></div><div class="setting-row"><div><b>外部日历同步</b><small>只读同步，自动标记为硬性事务</small></div><span class="connected">已连接</span></div></div></section>
+    </main>
+  </div>
+
+  <div class="modal-backdrop" id="eventModal"><div class="modal"><div class="modal-head"><div><span class="eyebrow">新建日程 · 07月14日</span><h2>安排一段时间</h2></div><button class="close-btn" data-close>×</button></div><label>活动名称<input id="eventName" placeholder="例如：产品评审、晚餐…" /></label><div class="form-grid"><label>开始时间<input type="time" value="14:00" /></label><label>结束时间<input type="time" value="16:00" /></label></div><label>分类标签<select><option>工作</option><option>娱乐</option><option>健身</option><option>学习</option><option>自定义</option></select></label><label>对外状态<div class="status-options"><button class="status-choice selected red-choice"><i></i>硬性事务</button><button class="status-choice green-choice"><i></i>完全空闲</button><button class="status-choice yellow-choice"><i></i>机动</button></div></label><div class="tail-control"><div><b>弹性尾巴</b><small>机动时间将附着在硬性事务末尾</small></div><input type="range" min="15" max="60" step="15" value="30" /><strong>30 分钟</strong></div><div class="modal-actions"><button class="ghost-btn" data-close>取消</button><button class="primary-btn" id="saveEvent">保存日程</button></div></div></div>
+  <div class="toast" id="toast">已保存</div>
+  <script src="./app.js"></script>
+</body>
+</html>
