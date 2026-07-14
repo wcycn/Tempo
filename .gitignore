@@ -1,0 +1,32 @@
+# Android / Gradle
+**/.gradle/
+**/build/
+**/local.properties
+**/.idea/
+*.iml
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Python
+__pycache__/
+*.py[cod]
+*.venv/
+venv/
+.venv/
+
+# Local runtime data
+*.db
+*.sqlite
+*.sqlite3
+backend.log
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+
+# Secrets and local environment
+.env
+.env.*
+!.env.example
