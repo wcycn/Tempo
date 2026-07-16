@@ -70,6 +70,20 @@
 - 目标：完成 App 内通知、推送、Android 设备矩阵、树莓派部署和网络稳定性验证。
 - 完成标准：目标设备能稳定连接后端，核心状态变化可及时同步。
 
+### N-010 · Android 前端状态层重构
+
+- 状态：`partial`
+- 目标：让页面只负责展示，日程数据由 ViewModel 和 Repository 统一管理。
+- 已完成：新增 `CalendarViewModel`、`MockCalendarDataSource`；创建日程通过 ViewModel 更新，月/周/日/日程视图共享同一份前端演示状态。
+- 已完成：补充 `lifecycle-viewmodel-compose` 依赖。
+- 已完成：已有日程可以点击进入编辑，修改名称、时间和状态；删除操作增加二次确认，并通过 ViewModel 从所有视图移除。
+- 验证结果：Android Studio 从 `android/` 目录打开后，Gradle 编译成功，当前修改未发现编译错误。
+- 已完成：好友、待应答邀约、通知和群组演示数据移出页面，统一由 `MockContentDataSource` 提供。
+- 已调整：移除 Android 前端的 `SharedPreferences` 和本地持久化；前端只保留内存 Mock 数据，正式数据统一由后端 API 提供。
+- 已完成：时间选择器打开时会回显已有起止时间。
+- 已知缺口：页面组件仍集中在 `MainActivity.kt`；API 客户端尚未接入。
+- 下一步：拆分页面文件，并实现纯 API 边界的 Remote Repository。
+
 ## 每次开发节点的记录模板
 
 ```markdown
@@ -92,3 +106,4 @@
 - 建立完整阶段计划。
 - 新增项目开发节点记录。
 - 明确当前 Android 原型、后端 MVP 和联网联调的边界。
+- 开始 Android 前端状态层重构，新增 ViewModel 和本地 Repository。
