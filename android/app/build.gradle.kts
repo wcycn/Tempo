@@ -9,7 +9,16 @@ android { namespace = "com.hutong.calendar"; compileSdk = 35
     buildFeatures { buildConfig = true }
     defaultConfig {
         applicationId = "com.hutong.calendar"; minSdk = 26; targetSdk = 35; versionCode = 1; versionName = "0.1.0"
-        buildConfigField("String", "API_BASE_URL", "\"http://127.0.0.1:8765/\"")
+    }
+    buildTypes {
+        debug {
+            // Android 内测直接访问公网服务器；正式环境应替换为 HTTPS 域名。
+            buildConfigField("String", "API_BASE_URL", "\"http://1.95.175.42:3001/\"")
+        }
+        release {
+            // 公网部署：开放云安全组后使用；正式发布应替换为 HTTPS 域名。
+            buildConfigField("String", "API_BASE_URL", "\"http://1.95.175.42:3001/\"")
+        }
     }
     // Java 与 Kotlin 必须使用同一个 JVM 编译目标，否则 Gradle 会在编译阶段终止。
     compileOptions {

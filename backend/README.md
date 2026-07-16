@@ -23,6 +23,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8765 --reload
 - `POST /api/auth/register`：注册，服务端使用 PBKDF2-SHA256 保存密码摘要，不保存明文密码
 - `POST /api/auth/login`：用户名/邮箱登录，返回会话 Token
 - `GET /api/auth/me`：获取当前用户资料
+- `PATCH /api/auth/me`：修改当前用户昵称
 - `GET/POST /api/events`：查询和创建当前用户日程
 - `PUT /api/events/{id}`：修改当前用户日程
 - `DELETE /api/events/{id}`：删除当前用户日程
@@ -45,6 +46,8 @@ python3 scripts/init_db.py
 ```
 
 当前包含用户、登录会话、日程、邀约、万年历缓存、好友关系、通知、群组和群成员表。
+
+用户内部数据库主键与对外账号 ID 分离。对外账号 ID 为六位数字，从 `100001` 开始分配；密码只保存摘要，昵称可以通过认证接口修改。
 
 `calendar.db` 只属于本机开发数据，已被 Git 忽略。不要把 `.env`、Token 或数据库文件提交到仓库。
 

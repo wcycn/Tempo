@@ -1,4 +1,7 @@
+from __future__ import annotations
+
 from datetime import datetime
+from typing import Optional
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
@@ -10,9 +13,13 @@ class User(Base):
     __tablename__ = "users"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    account_id: Mapped[int] = mapped_column(Integer, unique=True, index=True, nullable=True)
     username: Mapped[str] = mapped_column(String(40), unique=True, index=True)
     email: Mapped[str] = mapped_column(String(160), unique=True, index=True)
     display_name: Mapped[str] = mapped_column(String(80))
+    phone: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
+    hobbies: Mapped[Optional[str]] = mapped_column(String(240), nullable=True)
+    signature: Mapped[Optional[str]] = mapped_column(String(240), nullable=True)
     password_hash: Mapped[str] = mapped_column(String(256))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -33,7 +40,7 @@ class CalendarEvent(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     title: Mapped[str] = mapped_column(String(160))
-    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     start_at: Mapped[datetime] = mapped_column(DateTime, index=True)
     end_at: Mapped[datetime] = mapped_column(DateTime, index=True)
     category: Mapped[str] = mapped_column(String(40), default="工作")
@@ -49,7 +56,7 @@ class Invite(Base):
     sender_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     receiver_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     title: Mapped[str] = mapped_column(String(160))
-    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     start_at: Mapped[datetime] = mapped_column(DateTime)
     end_at: Mapped[datetime] = mapped_column(DateTime)
     status: Mapped[str] = mapped_column(String(16), default="PENDING")
@@ -65,8 +72,8 @@ class CalendarCache(Base):
     cache_date: Mapped[str] = mapped_column(String(10), index=True)
     solar_label: Mapped[str] = mapped_column(String(40))
     lunar_label: Mapped[str] = mapped_column(String(80))
-    festival: Mapped[str | None] = mapped_column(String(120), nullable=True)
-    solar_term: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    festival: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    solar_term: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
@@ -90,8 +97,8 @@ class Notification(Base):
     type: Mapped[str] = mapped_column(String(40))
     title: Mapped[str] = mapped_column(String(160))
     body: Mapped[str] = mapped_column(Text)
-    reference_type: Mapped[str | None] = mapped_column(String(40), nullable=True)
-    reference_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    reference_type: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
+    reference_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     is_read: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
 

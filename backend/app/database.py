@@ -31,6 +31,18 @@ def init_db() -> None:
     with engine.begin() as connection:
         if settings.database_url.startswith("sqlite"):
             connection.execute(text("PRAGMA foreign_keys=ON"))
+            columns = {row[1] for row in connection.execute(text("PRAGMA table_info(users)"))}
+            if "account_id" not in columns:
+                connection.execute(text("ALTER TABLE users ADD COLUMN account_id INTEGER"))
+            for column, definition in {
+                "phone": "VARCHAR(30)",
+                "hobbies": "VARCHAR(240)",
+                "signature": "VARCHAR(240)",
+            }.items():
+                if column not in columns:
+                    connection.execute(text(f"ALTER TABLE users ADD COLUMN {column} {definition}"))
+            connection.execute(text("UPDATE users SET account_id = 100000 + id WHERE account_id IS NULL"))
+            connection.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_users_account_id ON users(account_id)"))
 
 
 def check_db() -> bool:

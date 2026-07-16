@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import retrofit2.HttpException
 
 sealed interface AuthState {
     data object Loading : AuthState
@@ -37,22 +38,37 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
         api.register(com.hutong.calendar.data.RegisterRequestDto(username, email, password, displayName))
     }
 
+    fun updateProfile(displayName: String, phone: String?, hobbies: String?, signature: String?) = viewModelScope.launch {
+        val current = _state.value as? AuthState.LoggedIn ?: return@launch
+        try {
+            val user = api.updateProfile(com.hutong.calendar.data.ProfileUpdateRequestDto(displayName.trim(), phone?.trim(), hobbies?.trim(), signature?.trim()))
+            val session = AuthSession(current.session.accessToken, user.toProfile())
+            tokenStore.save(session)
+            _state.value = AuthState.LoggedIn(session)
+        } catch (error: Exception) {
+            _state.value = AuthState.Error(userFacingError(error, "资料保存失败"))
+        }
+    }
+
+    fun updateDisplayName(displayName: String) = updateProfile(displayName, null, null, null)
+
     fun logout() {
         tokenStore.clear()
         _state.value = AuthState.LoggedOut
     }
 
     private fun refreshUser() = viewModelScope.launch {
+        val savedToken = tokenStore.get()
         try {
             val user = api.me()
-            _state.value = AuthState.LoggedIn(AuthSession(tokenStore.get().orEmpty(), user.toProfile()))
+            _state.value = AuthState.LoggedIn(AuthSession(savedToken.orEmpty(), user.toProfile()))
         } catch (error: Exception) {
-            tokenStore.clear()
             val cachedUser = tokenStore.cachedUser()
             _state.value = if (cachedUser != null) {
-                AuthState.LoggedIn(AuthSession(tokenStore.get().orEmpty(), cachedUser))
+                AuthState.LoggedIn(AuthSession(savedToken.orEmpty(), cachedUser))
             } else {
-                AuthState.Error(error.message ?: "登录状态已失效")
+                tokenStore.clear()
+                AuthState.Error(userFacingError(error, "登录状态已失效"))
             }
         }
     }
@@ -65,9 +81,20 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
             tokenStore.save(session)
             _state.value = AuthState.LoggedIn(session)
         } catch (error: Exception) {
-            _state.value = AuthState.Error(error.message ?: "网络请求失败")
+            _state.value = AuthState.Error(userFacingError(error, "网络请求失败"))
         }
     }
 }
 
-private fun com.hutong.calendar.data.UserDto.toProfile() = UserProfile(id.toString(), displayName, email = email)
+private fun com.hutong.calendar.data.UserDto.toProfile() = UserProfile(id.toString(), displayName, email = email, accountId = accountId.toString(), phone = phone, hobbies = hobbies, signature = signature)
+
+private fun userFacingError(error: Exception, fallback: String): String = when (error) {
+    is HttpException -> when (error.code()) {
+        401 -> "账号或密码错误"
+        409 -> "用户名或邮箱已被占用"
+        422 -> "输入内容不符合要求，请检查后重试"
+        in 500..599 -> "服务器暂时不可用，请稍后重试"
+        else -> fallback
+    }
+    else -> "网络不可用，请检查网络连接后重试"
+}

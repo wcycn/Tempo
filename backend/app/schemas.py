@@ -1,4 +1,7 @@
+from __future__ import annotations
+
 from datetime import datetime
+from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
@@ -6,9 +9,13 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field
 class UserPublic(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int
+    account_id: int
     username: str
     email: EmailStr
     display_name: str
+    phone: Optional[str] = None
+    hobbies: Optional[str] = None
+    signature: Optional[str] = None
 
 
 class RegisterRequest(BaseModel):
@@ -16,6 +23,34 @@ class RegisterRequest(BaseModel):
     email: EmailStr
     password: str = Field(min_length=8, max_length=128)
     display_name: str = Field(min_length=1, max_length=80)
+
+
+class ProfileUpdateRequest(BaseModel):
+    display_name: Optional[str] = Field(default=None, min_length=1, max_length=80)
+    phone: Optional[str] = Field(default=None, max_length=30)
+    hobbies: Optional[str] = Field(default=None, max_length=240)
+    signature: Optional[str] = Field(default=None, max_length=240)
+
+
+class FriendUserPublic(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    account_id: int
+    username: str
+    display_name: str
+
+
+class FriendRequestCreate(BaseModel):
+    friend_id: int
+
+
+class FriendshipPublic(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    user_id: int
+    friend_id: int
+    status: str
+    friend: FriendUserPublic
 
 
 class LoginRequest(BaseModel):
@@ -31,7 +66,7 @@ class AuthResponse(BaseModel):
 
 class EventCreate(BaseModel):
     title: str = Field(min_length=1, max_length=160)
-    description: str | None = None
+    description: Optional[str] = None
     start_at: datetime
     end_at: datetime
     category: str = "工作"
@@ -49,7 +84,7 @@ class EventPublic(EventCreate):
 class InviteCreate(BaseModel):
     receiver_id: int
     title: str = Field(min_length=1, max_length=160)
-    description: str | None = None
+    description: Optional[str] = None
     start_at: datetime
     end_at: datetime
 

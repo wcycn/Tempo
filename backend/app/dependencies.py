@@ -1,6 +1,9 @@
+from __future__ import annotations
+
 from datetime import datetime
 import hashlib
-from typing import Annotated
+
+from typing import Annotated, Optional
 
 from fastapi import Depends, Header, HTTPException, status
 from sqlalchemy import select
@@ -11,7 +14,7 @@ from .models import SessionToken, User
 
 
 def current_user(
-    authorization: Annotated[str | None, Header()] = None,
+    authorization: Annotated[Optional[str], Header()] = None,
     db: Session = Depends(get_db),
 ) -> User:
     if not authorization or not authorization.lower().startswith("bearer "):

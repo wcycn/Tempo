@@ -2,6 +2,7 @@ package com.hutong.calendar
 
 import android.os.Bundle
 import android.os.SystemClock
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.animation.AnimatedContent
@@ -37,6 +38,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
+import androidx.activity.compose.BackHandler
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.hutong.calendar.data.CalendarEvent
 import com.hutong.calendar.data.CategoryOption
@@ -113,6 +115,9 @@ fun HutongApp() {
     }
     val calendarViewModel: CalendarViewModel = viewModel()
     val contentViewModel: ContentViewModel = viewModel()
+    val friendsViewModel: FriendsViewModel = viewModel()
+    val friendResults by friendsViewModel.results.collectAsState()
+    val friendMessage by friendsViewModel.message.collectAsState()
     val friends = contentViewModel.friends
     val pendingInvites = contentViewModel.pendingInvites
     val notices = contentViewModel.notices
@@ -123,12 +128,23 @@ fun HutongApp() {
     var showInvite by remember { mutableStateOf(false) }
     var editingEvent by remember { mutableStateOf<CalendarEvent?>(null) }
     var createDate by remember { mutableStateOf(LocalDate.now().toString()) }
+    var lastBackPressAt by remember { mutableLongStateOf(0L) }
+
+    BackHandler(enabled = authState is AuthState.LoggedIn) {
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastBackPressAt <= 2000L) {
+            (context as? android.app.Activity)?.finish()
+        } else {
+            lastBackPressAt = now
+            Toast.makeText(context, "再按一次退出应用", Toast.LENGTH_SHORT).show()
+        }
+    }
 
     MaterialTheme(colorScheme = colorScheme) {
         Scaffold(containerColor = Bg, bottomBar = { BottomNav(page) { page = it } }) { padding ->
             Box(Modifier.fillMaxSize().padding(padding)) {
                 when (page) {
-                    "找时间" -> MatchPage(pendingInvites, friends, onStartInvite = { showInvite = true }, onRespond = { contentViewModel.respondToInvite(it.id) })
+                    "找时间" -> MatchPage(pendingInvites, friends, friendResults, onSearchFriends = friendsViewModel::search, onClearSearch = friendsViewModel::clearSearch, onAddFriend = friendsViewModel::add, onStartInvite = { showInvite = true }, onRespond = { contentViewModel.respondToInvite(it.id) })
                     "群组" -> GroupPage(groups)
                     "通知" -> NoticePage(notices)
                     "我的" -> SettingsPage(
@@ -136,6 +152,7 @@ fun HutongApp() {
                         themeChoice = themeChoice,
                         onThemeChange = { themeChoice = it; ThemePreference.save(context, it) },
                         onLogin = { showAuth = true },
+                        onUpdateProfile = authViewModel::updateProfile,
                         onLogout = authViewModel::logout
                     )
                     else -> CalendarPage(remoteEvents, onAdd = { date -> createDate = date; showCreate = true }, onEdit = { editingEvent = it })
@@ -157,6 +174,9 @@ fun HutongApp() {
             )
         }
         if (showInvite) InviteDialog(friends, onSend = { contentViewModel.addInvite(it); showInvite = false }, onClose = { showInvite = false })
+        friendMessage?.let { message ->
+            AlertDialog(onDismissRequest = friendsViewModel::clearMessage, containerColor = Panel, title = { Text("好友") }, text = { Text(message, color = Muted) }, confirmButton = { TextButton(onClick = friendsViewModel::clearMessage) { Text("知道了", color = Coral) } })
+        }
     }
 }
 
@@ -432,14 +452,29 @@ fun eventColor(status: EventStatus): Color = when (status) { EventStatus.HARD ->
 @Composable fun TimeEvent(time: String, title: String, detail: String, color: Color, categoryColor: Color? = null, onClick: (() -> Unit)? = null) { Row(Modifier.fillMaxWidth().padding(top = 14.dp).then(if (onClick != null) Modifier.clickable { onClick() } else Modifier), verticalAlignment = Alignment.Top) { Text(time, color = Muted, fontSize = 11.sp, modifier = Modifier.width(92.dp)); Surface(color = color.copy(alpha = .14f), shape = RoundedCornerShape(topEnd = 10.dp, bottomEnd = 10.dp), modifier = Modifier.weight(1f).border(1.dp, color.copy(alpha = .7f), RoundedCornerShape(topEnd = 10.dp, bottomEnd = 10.dp))) { Column(Modifier.padding(9.dp)) { Row(verticalAlignment = Alignment.CenterVertically) { categoryColor?.let { Box(Modifier.size(8.dp).clip(CircleShape).background(it)); Spacer(Modifier.width(6.dp)) }; Text(title, color = MainText, fontWeight = FontWeight.Bold, fontSize = 12.sp) }; Text(detail, color = Muted, fontSize = 10.sp) } } } }
 
 @Composable
-fun MatchPage(invites: List<PendingInvite>, friends: List<FriendSummary>, onStartInvite: () -> Unit, onRespond: (PendingInvite) -> Unit) {
+fun MatchPage(invites: List<PendingInvite>, friends: List<FriendSummary>, searchResults: List<com.hutong.calendar.data.FriendUserDto>, onSearchFriends: (String) -> Unit, onClearSearch: () -> Unit, onAddFriend: (com.hutong.calendar.data.FriendUserDto) -> Unit, onStartInvite: () -> Unit, onRespond: (PendingInvite) -> Unit) {
+    var query by remember { mutableStateOf("") }
     Column(Modifier.fillMaxSize().padding(18.dp)) {
         Header("一起安排，不用来回问", "找时间", if (friends.isNotEmpty()) "＋ 发起邀约" else null, onStartInvite)
         Surface(color = Card, shape = RoundedCornerShape(22.dp)) { Column(Modifier.padding(20.dp)) { Text("智能匹配", color = Yellow, fontSize = 12.sp); Text("谁的时间，刚好和你重合？", color = MainText, fontSize = 21.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(vertical = 12.dp)); Text("先扫描双方完全空闲，再询问是否纳入机动尾巴。", color = Muted, fontSize = 12.sp) } }
         Text("待应答邀约  ${invites.size}", color = MainText, fontSize = 19.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 25.dp, bottom = 12.dp))
         if (invites.isEmpty()) Text("暂时没有待应答邀约", color = Muted, modifier = Modifier.padding(vertical = 20.dp))
         LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) { items(invites) { invite -> InviteCard(invite, onRespond = { onRespond(invite) }) } }
-        Text("好友", color = MainText, fontSize = 19.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 25.dp, bottom = 12.dp))
+        Text("好友与找人", color = MainText, fontSize = 19.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 25.dp, bottom = 12.dp))
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            OutlinedTextField(value = query, onValueChange = { query = it }, label = { Text("用户名或昵称") }, singleLine = true, modifier = Modifier.weight(1f))
+            Spacer(Modifier.width(8.dp)); Button(onClick = { onSearchFriends(query) }, colors = ButtonDefaults.buttonColors(containerColor = Coral)) { Text("搜索") }
+            if (query.isNotBlank()) { Spacer(Modifier.width(4.dp)); TextButton(onClick = { query = ""; onClearSearch() }) { Text("取消", color = Muted) } }
+        }
+        if (query.isNotBlank() && searchResults.isEmpty()) Text("未找到联系人，请检查用户名或昵称", color = Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 12.dp))
+        searchResults.forEach { result ->
+            Surface(color = Panel, shape = RoundedCornerShape(16.dp), modifier = Modifier.padding(top = 8.dp)) {
+                Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) { Text(result.displayName, color = MainText, fontWeight = FontWeight.Bold); Text(result.username, color = Muted, fontSize = 11.sp) }
+                    TextButton(onClick = { onAddFriend(result) }) { Text("添加", color = Coral) }
+                }
+            }
+        }
         if (friends.isEmpty()) Text("暂无好友，添加好友后才能发起真实邀约", color = Muted, modifier = Modifier.padding(vertical = 16.dp))
         friends.forEach { friend -> Surface(color = Panel, shape = RoundedCornerShape(16.dp), modifier = Modifier.padding(bottom = 8.dp)) { Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) { Text(friend.name, color = MainText, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f)); Text(friend.availability, color = Muted, fontSize = 11.sp) } } }
     }
@@ -450,16 +485,28 @@ fun MatchPage(invites: List<PendingInvite>, friends: List<FriendSummary>, onStar
 @Composable fun GroupPage(groups: List<GroupSummary>) { SimplePage("一起参加，不被代表", "群组", *groups.flatMap { listOf(it.name, it.activity, it.detail) }.toTypedArray()) }
 @Composable fun NoticePage(notices: List<NoticeItem>) { SimplePage("重要的事，及时知道", "通知", *notices.flatMap { listOf(it.title, it.detail) }.toTypedArray()) }
 @Composable
-fun SettingsPage(user: UserProfile?, themeChoice: ThemeChoice, onThemeChange: (ThemeChoice) -> Unit, onLogin: () -> Unit, onLogout: () -> Unit) {
+fun SettingsPage(user: UserProfile?, themeChoice: ThemeChoice, onThemeChange: (ThemeChoice) -> Unit, onLogin: () -> Unit, onUpdateProfile: (String, String?, String?, String?) -> Unit, onLogout: () -> Unit) {
     val context = LocalContext.current
     var categories by remember { mutableStateOf(CategoryStore.load(context)) }
+    var showProfileEditor by remember { mutableStateOf(false) }
+    var logoutStep by remember { mutableStateOf(0) }
+    var editedName by remember(user?.displayName) { mutableStateOf(user?.displayName.orEmpty()) }
+    var editedPhone by remember(user?.phone) { mutableStateOf(user?.phone.orEmpty()) }
+    var editedHobbies by remember(user?.hobbies) { mutableStateOf(user?.hobbies.orEmpty()) }
+    var editedSignature by remember(user?.signature) { mutableStateOf(user?.signature.orEmpty()) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(18.dp)) {
         Header("账户与偏好", "我的")
         Surface(color = Panel, shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.padding(18.dp)) {
-                Text(if (user == null) "游客模式" else user.displayName, color = MainText, fontSize = 21.sp, fontWeight = FontWeight.Bold)
-                Text(if (user == null) "未登录 · 日程仅保存在本机" else "账号 ID：${user.id}", color = Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text(if (user == null) "游客模式" else user.displayName, color = MainText, fontSize = 21.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                    if (user != null) TextButton(onClick = { editedName = user.displayName; editedPhone = user.phone.orEmpty(); editedHobbies = user.hobbies.orEmpty(); editedSignature = user.signature.orEmpty(); showProfileEditor = true }) { Text("编辑资料", color = Coral) }
+                }
+                Text(if (user == null) "未登录 · 日程仅保存在本机" else "账号 ID：${user.accountId}", color = Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
                 user?.email?.let { Text(it, color = Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 3.dp)) }
+                user?.phone?.takeIf { it.isNotBlank() }?.let { Text("电话：$it", color = Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 3.dp)) }
+                user?.hobbies?.takeIf { it.isNotBlank() }?.let { Text("爱好：$it", color = Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 3.dp)) }
+                user?.signature?.takeIf { it.isNotBlank() }?.let { Text("签名：$it", color = Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 3.dp)) }
                 if (user == null) Button(onClick = onLogin, modifier = Modifier.padding(top = 14.dp)) { Text("登录 / 注册") }
             }
         }
@@ -485,7 +532,60 @@ fun SettingsPage(user: UserProfile?, themeChoice: ThemeChoice, onThemeChange: (T
                 }
             }
         }
-        if (user != null) OutlinedButton(onClick = onLogout, modifier = Modifier.fillMaxWidth().padding(top = 20.dp)) { Text("退出登录") }
+        if (user != null) OutlinedButton(onClick = { logoutStep = 1 }, modifier = Modifier.fillMaxWidth().padding(top = 20.dp)) { Text("退出登录") }
+    }
+    if (showProfileEditor && user != null) {
+        AlertDialog(
+            onDismissRequest = { showProfileEditor = false },
+            containerColor = Panel,
+            title = { Text("编辑个人资料") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(editedName, { editedName = it }, label = { Text("昵称") }, singleLine = true)
+                    OutlinedTextField(editedPhone, { editedPhone = it }, label = { Text("电话（可选）") }, singleLine = true)
+                    OutlinedTextField(editedHobbies, { editedHobbies = it }, label = { Text("爱好（可选）") }, singleLine = true)
+                    OutlinedTextField(editedSignature, { editedSignature = it }, label = { Text("签名（可选）") }, singleLine = true)
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val name = editedName.trim()
+                        if (name.isNotEmpty()) {
+                            onUpdateProfile(name, editedPhone, editedHobbies, editedSignature)
+                            showProfileEditor = false
+                        }
+                    },
+                    enabled = editedName.trim().isNotEmpty(),
+                    colors = ButtonDefaults.buttonColors(containerColor = Coral)
+                ) { Text("保存") }
+            },
+            dismissButton = { TextButton(onClick = { showProfileEditor = false }) { Text("取消") } }
+        )
+    }
+    if (logoutStep == 1) {
+        AlertDialog(
+            onDismissRequest = { logoutStep = 0 },
+            containerColor = Panel,
+            title = { Text("确认退出登录？") },
+            text = { Text("为防止误触，请再次确认。", color = Muted) },
+            confirmButton = {
+                Button(onClick = { logoutStep = 2 }, colors = ButtonDefaults.buttonColors(containerColor = Coral)) { Text("继续退出") }
+            },
+            dismissButton = { TextButton(onClick = { logoutStep = 0 }) { Text("取消") } }
+        )
+    }
+    if (logoutStep == 2) {
+        AlertDialog(
+            onDismissRequest = { logoutStep = 0 },
+            containerColor = Panel,
+            title = { Text("再次确认退出登录") },
+            text = { Text("退出后仍可离线使用本机日历，联网功能需要重新登录。", color = Muted) },
+            confirmButton = {
+                Button(onClick = { logoutStep = 0; onLogout() }, colors = ButtonDefaults.buttonColors(containerColor = Coral)) { Text("确认退出") }
+            },
+            dismissButton = { TextButton(onClick = { logoutStep = 0 }) { Text("取消") } }
+        )
     }
 }
 @Composable fun SimplePage(eyebrow: String, title: String, vararg lines: String) { Column(Modifier.fillMaxSize().padding(18.dp)) { Header(eyebrow, title); lines.forEach { line -> Surface(color = Panel, shape = RoundedCornerShape(17.dp), modifier = Modifier.padding(bottom = 10.dp)) { Text(line, color = MainText, fontSize = 15.sp, modifier = Modifier.fillMaxWidth().padding(18.dp)) } } } }

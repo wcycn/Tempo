@@ -1,4 +1,7 @@
+from __future__ import annotations
+
 from datetime import datetime
+from typing import Optional
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -6,7 +9,7 @@ from sqlalchemy.orm import Session
 from ..models import CalendarEvent
 
 
-def find_hard_conflict(db: Session, user_id: int, start_at: datetime, end_at: datetime) -> CalendarEvent | None:
+def find_hard_conflict(db: Session, user_id: int, start_at: datetime, end_at: datetime) -> Optional[CalendarEvent]:
     """返回重叠的硬性事务；绿色/黄色事件不阻塞硬性事务检测。"""
     return db.scalar(select(CalendarEvent).where(
         CalendarEvent.user_id == user_id,
@@ -14,4 +17,3 @@ def find_hard_conflict(db: Session, user_id: int, start_at: datetime, end_at: da
         CalendarEvent.start_at < end_at,
         CalendarEvent.end_at > start_at,
     ))
-
