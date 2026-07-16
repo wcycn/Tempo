@@ -52,7 +52,8 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
 
     fun updateDisplayName(displayName: String) = updateProfile(displayName, null, null, null)
 
-    fun logout() {
+    fun logout() = viewModelScope.launch {
+        runCatching { if (tokenStore.get() != null) api.logout() }
         tokenStore.clear()
         _state.value = AuthState.LoggedOut
     }

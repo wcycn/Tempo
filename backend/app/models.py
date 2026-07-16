@@ -29,6 +29,7 @@ class SessionToken(Base):
     __tablename__ = "sessions"
 
     token_hash: Mapped[str] = mapped_column(String(128), primary_key=True)
+    session_key: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
@@ -87,6 +88,18 @@ class Friendship(Base):
     status: Mapped[str] = mapped_column(String(16), default="PENDING")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class AvailabilityBlock(Base):
+    __tablename__ = "availability_blocks"
+    __table_args__ = (UniqueConstraint("user_id", "date", "start_time", "end_time", name="uq_availability_block"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    date: Mapped[str] = mapped_column(String(10), index=True)
+    start_time: Mapped[str] = mapped_column(String(5))
+    end_time: Mapped[str] = mapped_column(String(5))
+    status: Mapped[str] = mapped_column(String(16))
 
 
 class Notification(Base):

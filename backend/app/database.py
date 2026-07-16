@@ -43,6 +43,11 @@ def init_db() -> None:
                     connection.execute(text(f"ALTER TABLE users ADD COLUMN {column} {definition}"))
             connection.execute(text("UPDATE users SET account_id = 100000 + id WHERE account_id IS NULL"))
             connection.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_users_account_id ON users(account_id)"))
+            session_columns = {row[1] for row in connection.execute(text("PRAGMA table_info(sessions)"))}
+            if "session_key" not in session_columns:
+                connection.execute(text("ALTER TABLE sessions ADD COLUMN session_key VARCHAR(64)"))
+            connection.execute(text("UPDATE sessions SET session_key = substr(token_hash, 1, 32) WHERE session_key IS NULL"))
+            connection.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_sessions_session_key ON sessions(session_key)"))
 
 
 def check_db() -> bool:

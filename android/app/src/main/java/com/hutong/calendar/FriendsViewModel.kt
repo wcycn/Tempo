@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import retrofit2.HttpException
+import java.time.LocalDate
 
 class FriendsViewModel(application: Application) : AndroidViewModel(application) {
     private val store = TokenStore(application)
@@ -19,6 +20,18 @@ class FriendsViewModel(application: Application) : AndroidViewModel(application)
     val results: StateFlow<List<FriendUserDto>> = _results.asStateFlow()
     private val _message = MutableStateFlow<String?>(null)
     val message: StateFlow<String?> = _message.asStateFlow()
+    private val _friendships = MutableStateFlow<List<com.hutong.calendar.data.FriendshipDto>>(emptyList())
+    val friendships: StateFlow<List<com.hutong.calendar.data.FriendshipDto>> = _friendships.asStateFlow()
+    private val _availability = MutableStateFlow<List<com.hutong.calendar.data.AvailabilityBlockDto>>(emptyList())
+    val availability: StateFlow<List<com.hutong.calendar.data.AvailabilityBlockDto>> = _availability.asStateFlow()
+
+    init { refresh() }
+
+    fun refresh() = viewModelScope.launch {
+        if (store.get() == null) { _friendships.value = emptyList(); return@launch }
+        runCatching { api.listFriends() }.onSuccess { _friendships.value = it }
+            .onFailure { _message.value = friendFacingError(it as? Exception ?: Exception()) }
+    }
 
     fun search(query: String) = viewModelScope.launch {
         if (query.trim().isEmpty() || store.get() == null) { _results.value = emptyList(); return@launch }
@@ -27,8 +40,32 @@ class FriendsViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun add(user: FriendUserDto) = viewModelScope.launch {
+        if (user.id.toString() == store.cachedUser()?.id) {
+            _message.value = "不能添加自己"
+            return@launch
+        }
         try { api.sendFriendRequest(com.hutong.calendar.data.FriendRequestDto(user.id)); _message.value = "已向 ${user.displayName} 发送好友申请" }
         catch (error: Exception) { _message.value = friendFacingError(error) }
+    }
+
+    fun respond(friendshipId: Int, status: String) = viewModelScope.launch {
+        runCatching { api.respondFriend(friendshipId, com.hutong.calendar.data.FriendResponseDto(status)) }
+            .onSuccess { refresh(); _message.value = if (status == "ACCEPTED") "已添加好友" else "已拒绝好友申请" }
+            .onFailure { _message.value = friendFacingError(it as? Exception ?: Exception()) }
+    }
+
+    fun remove(friendshipId: Int) = viewModelScope.launch {
+        runCatching { api.deleteFriend(friendshipId) }
+            .onSuccess { refresh(); _message.value = "好友关系已删除" }
+            .onFailure { _message.value = friendFacingError(it as? Exception ?: Exception()) }
+    }
+
+    fun loadAvailability(friendId: Int, date: String) = viewModelScope.launch {
+        val center = runCatching { LocalDate.parse(date) }.getOrDefault(LocalDate.now())
+        val monday = center.minusDays((center.dayOfWeek.value - 1).toLong())
+        runCatching { (0..6).flatMap { api.friendAvailability(friendId, monday.plusDays(it.toLong()).toString()) } }
+            .onSuccess { _availability.value = it }
+            .onFailure { _availability.value = emptyList(); _message.value = friendFacingError(it as? Exception ?: Exception()) }
     }
 
     fun clearMessage() { _message.value = null }

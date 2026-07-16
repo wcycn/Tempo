@@ -18,8 +18,10 @@ object CategoryStore {
         CategoryOption("会议", "#D86A75")
     )
 
-    fun load(context: Context): List<CategoryOption> {
-        val saved = context.getSharedPreferences(FILE, Context.MODE_PRIVATE).getString(KEY, null)
+    fun load(context: Context, ownerId: String = localOwnerId(context)): List<CategoryOption> {
+        val prefs = context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+        val scopedKey = "$KEY-$ownerId"
+        val saved = prefs.getString(scopedKey, null)
             ?: return defaults
         val parsed = saved.split(ITEM_SEPARATOR).mapNotNull { item ->
             val fields = item.split(FIELD_SEPARATOR)
@@ -28,19 +30,21 @@ object CategoryStore {
         return if (parsed.isEmpty()) defaults else parsed
     }
 
-    fun add(context: Context, option: CategoryOption): List<CategoryOption> {
-        val result = (load(context).filterNot { it.name == option.name } + option)
+    fun add(context: Context, option: CategoryOption, ownerId: String = localOwnerId(context)): List<CategoryOption> {
+        val result = (load(context, ownerId).filterNot { it.name == option.name } + option)
         context.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
-            .putString(KEY, result.joinToString(ITEM_SEPARATOR) { "${it.name}$FIELD_SEPARATOR${it.colorHex}" })
+            .putString("$KEY-$ownerId", result.joinToString(ITEM_SEPARATOR) { "${it.name}$FIELD_SEPARATOR${it.colorHex}" })
             .apply()
         return result
     }
 
-    fun remove(context: Context, name: String): List<CategoryOption> {
-        val result = load(context).filterNot { it.name == name }
+    fun remove(context: Context, name: String, ownerId: String = localOwnerId(context)): List<CategoryOption> {
+        val result = load(context, ownerId).filterNot { it.name == name }
         context.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
-            .putString(KEY, result.joinToString(ITEM_SEPARATOR) { "${it.name}$FIELD_SEPARATOR${it.colorHex}" })
+            .putString("$KEY-$ownerId", result.joinToString(ITEM_SEPARATOR) { "${it.name}$FIELD_SEPARATOR${it.colorHex}" })
             .apply()
         return result
     }
+
+    private fun localOwnerId(context: Context): String = TokenStore(context).cachedUser()?.id ?: "guest"
 }

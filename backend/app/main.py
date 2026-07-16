@@ -5,7 +5,7 @@ from fastapi.responses import JSONResponse
 
 from .config import settings
 from .database import check_db, init_db
-from .routes import auth, events, friends, invites, sync
+from .routes import auth, events, friends, groups, invites, sync
 
 init_db()
 
@@ -28,6 +28,7 @@ async def validation_error(_: Request, exc: RequestValidationError):
 
 app.include_router(auth.router)
 app.include_router(friends.router)
+app.include_router(groups.router)
 app.include_router(events.router)
 app.include_router(invites.router)
 app.include_router(sync.router)
