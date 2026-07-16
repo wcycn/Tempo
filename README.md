@@ -161,3 +161,4 @@ adb reverse tcp:8765 tcp:8765
 - [Android 客户端说明](android/README.md)
 - [后端说明](backend/README.md)
 - [开发节点记录](docs/project_nodes.md)
+- [协作开发说明](CONTRIBUTING.md)
