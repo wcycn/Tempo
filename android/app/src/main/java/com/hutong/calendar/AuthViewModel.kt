@@ -1,0 +1,73 @@
+package com.hutong.calendar
+
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import com.hutong.calendar.data.AuthSession
+import com.hutong.calendar.data.TempoApiFactory
+import com.hutong.calendar.data.TokenStore
+import com.hutong.calendar.data.UserProfile
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+
+sealed interface AuthState {
+    data object Loading : AuthState
+    data object LoggedOut : AuthState
+    data class LoggedIn(val session: AuthSession) : AuthState
+    data class Error(val message: String) : AuthState
+}
+
+class AuthViewModel(application: Application) : AndroidViewModel(application) {
+    private val tokenStore = TokenStore(application)
+    private val api = TempoApiFactory.create { tokenStore.get() }
+    private val _state = MutableStateFlow<AuthState>(if (tokenStore.get() == null) AuthState.LoggedOut else AuthState.Loading)
+    val state: StateFlow<AuthState> = _state.asStateFlow()
+
+    init {
+        if (tokenStore.get() != null) refreshUser()
+    }
+
+    fun login(account: String, password: String) = runAuth {
+        api.login(com.hutong.calendar.data.LoginRequestDto(account, password))
+    }
+
+    fun register(username: String, email: String, password: String, displayName: String) = runAuth {
+        api.register(com.hutong.calendar.data.RegisterRequestDto(username, email, password, displayName))
+    }
+
+    fun logout() {
+        tokenStore.clear()
+        _state.value = AuthState.LoggedOut
+    }
+
+    private fun refreshUser() = viewModelScope.launch {
+        try {
+            val user = api.me()
+            _state.value = AuthState.LoggedIn(AuthSession(tokenStore.get().orEmpty(), user.toProfile()))
+        } catch (error: Exception) {
+            tokenStore.clear()
+            val cachedUser = tokenStore.cachedUser()
+            _state.value = if (cachedUser != null) {
+                AuthState.LoggedIn(AuthSession(tokenStore.get().orEmpty(), cachedUser))
+            } else {
+                AuthState.Error(error.message ?: "登录状态已失效")
+            }
+        }
+    }
+
+    private fun runAuth(block: suspend () -> com.hutong.calendar.data.AuthResponseDto) = viewModelScope.launch {
+        _state.value = AuthState.Loading
+        try {
+            val response = block()
+            val session = AuthSession(response.accessToken, response.user.toProfile())
+            tokenStore.save(session)
+            _state.value = AuthState.LoggedIn(session)
+        } catch (error: Exception) {
+            _state.value = AuthState.Error(error.message ?: "网络请求失败")
+        }
+    }
+}
+
+private fun com.hutong.calendar.data.UserDto.toProfile() = UserProfile(id.toString(), displayName)

@@ -55,12 +55,19 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun HutongApp() {
+    val authViewModel: AuthViewModel = viewModel()
+    val authState by authViewModel.state.collectAsState()
+    if (authState !is AuthState.LoggedIn) {
+        AuthScreen(authState, authViewModel::login, authViewModel::register)
+        return
+    }
     val calendarViewModel: CalendarViewModel = viewModel()
     val contentViewModel: ContentViewModel = viewModel()
     val friends = contentViewModel.friends
     val pendingInvites = contentViewModel.pendingInvites
     val notices = contentViewModel.notices
     val groups = contentViewModel.groups
+    val remoteEvents by calendarViewModel.eventsState.collectAsState()
     var page by remember { mutableStateOf("日程") }
     var showCreate by remember { mutableStateOf(false) }
     var showInvite by remember { mutableStateOf(false) }
@@ -74,8 +81,8 @@ fun HutongApp() {
                     "找时间" -> MatchPage(pendingInvites, friends, onStartInvite = { showInvite = true }, onRespond = { contentViewModel.respondToInvite(it.id) })
                     "群组" -> GroupPage(groups)
                     "通知" -> NoticePage(notices)
-                    "我的" -> SettingsPage()
-                    else -> CalendarPage(calendarViewModel.events, onAdd = { date -> createDate = date; showCreate = true }, onEdit = { editingEvent = it })
+                    "我的" -> SettingsPage(onLogout = authViewModel::logout)
+                    else -> CalendarPage(remoteEvents, onAdd = { date -> createDate = date; showCreate = true }, onEdit = { editingEvent = it })
                 }
             }
         }
@@ -248,7 +255,7 @@ fun MatchPage(invites: List<PendingInvite>, friends: List<FriendSummary>, onStar
 
 @Composable fun GroupPage(groups: List<GroupSummary>) { SimplePage("一起参加，不被代表", "群组", *groups.flatMap { listOf(it.name, it.activity, it.detail) }.toTypedArray()) }
 @Composable fun NoticePage(notices: List<NoticeItem>) { SimplePage("重要的事，及时知道", "通知", *notices.flatMap { listOf(it.title, it.detail) }.toTypedArray()) }
-@Composable fun SettingsPage() { SimplePage("让日历更像你的日历", "我的设置", "林小满 · linxiaoman@example.com", "连续忙碌健康提醒", "外部日历同步 · 已连接", "默认导入分类 · 工作") }
+@Composable fun SettingsPage(onLogout: () -> Unit = {}) { SimplePage("账户与偏好", "我的", "账户已登录", "日程和已同意邀约会同步到本机离线缓存", "连续忙碌健康提醒", "默认导入分类 · 工作"); TextButton(onClick = onLogout, modifier = Modifier.padding(horizontal = 18.dp)) { Text("退出登录", color = Red) } }
 @Composable fun SimplePage(eyebrow: String, title: String, vararg lines: String) { Column(Modifier.fillMaxSize().padding(18.dp)) { Header(eyebrow, title); lines.forEach { line -> Surface(color = Panel, shape = RoundedCornerShape(17.dp), modifier = Modifier.padding(bottom = 10.dp)) { Text(line, color = MainText, fontSize = 15.sp, modifier = Modifier.fillMaxWidth().padding(18.dp)) } } } }
 
 @Composable fun BottomNav(current: String, onSelect: (String) -> Unit) { NavigationBar(containerColor = Panel) { listOf("日程" to "▣", "找时间" to "⌕", "群组" to "♧", "通知" to "♢", "我的" to "⚙").forEach { (name, icon) -> NavigationBarItem(selected = current == name, onClick = { onSelect(name) }, icon = { Text(icon, fontSize = 20.sp) }, label = { Text(name, fontSize = 10.sp) }) } } }
@@ -271,7 +278,7 @@ fun CreateEventDialog(date: String, onSave: (CalendarEvent) -> Unit, onCancel: (
     }, confirmButton = { Button(onClick = {
         val finalName = name.ifBlank { "未命名日程" }
         val eventStatus = when (status) { "空闲" -> EventStatus.FREE; "机动" -> EventStatus.FLEXIBLE; else -> EventStatus.HARD }
-        onSave(CalendarEvent(UUID.randomUUID().toString(), "me", finalName, "$date $start", "$date $end", "工作", eventStatus, if (eventStatus == EventStatus.FLEXIBLE) 30 else 0))
+        onSave(CalendarEvent("local-${UUID.randomUUID()}", "me", finalName, "$date $start", "$date $end", "工作", eventStatus, if (eventStatus == EventStatus.FLEXIBLE) 30 else 0))
     }, colors = ButtonDefaults.buttonColors(containerColor = Coral)) { Text("保存日程") } }, dismissButton = { TextButton(onClick = onCancel) { Text("取消") } })
     if (showPicker) TimeGridDialog(initialStart = start, initialEnd = end, onCancel = { showPicker = false }, onSelect = { s, e -> start = s; end = e; showPicker = false })
 }
