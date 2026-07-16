@@ -4,6 +4,12 @@ import android.os.Bundle
 import android.os.SystemClock
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
@@ -11,6 +17,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -22,8 +30,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
@@ -112,7 +122,7 @@ fun HutongApp() {
     var showCreate by remember { mutableStateOf(false) }
     var showInvite by remember { mutableStateOf(false) }
     var editingEvent by remember { mutableStateOf<CalendarEvent?>(null) }
-    var createDate by remember { mutableStateOf("2026-07-14") }
+    var createDate by remember { mutableStateOf(LocalDate.now().toString()) }
 
     MaterialTheme(colorScheme = colorScheme) {
         Scaffold(containerColor = Bg, bottomBar = { BottomNav(page) { page = it } }) { padding ->
@@ -159,12 +169,39 @@ fun Header(eyebrow: String, title: String, action: String? = null, onAction: () 
 }
 
 @Composable
+@OptIn(androidx.compose.animation.ExperimentalAnimationApi::class)
 fun CalendarPage(events: List<CalendarEvent>, onAdd: (String) -> Unit, onEdit: (CalendarEvent) -> Unit) {
     var mode by remember { mutableStateOf(CalendarMode.MONTH) }
-    var year by remember { mutableStateOf(2026) }
-    var month by remember { mutableStateOf(7) }
-    var selectedDay by remember { mutableStateOf(14) }
-    Column(Modifier.fillMaxSize().padding(18.dp)) {
+    val today = remember { LocalDate.now() }
+    var year by remember { mutableStateOf(today.year) }
+    var month by remember { mutableStateOf(today.monthValue) }
+    var selectedDay by remember { mutableStateOf(today.dayOfMonth) }
+    val pageScroll = rememberScrollState()
+    val pageModifier = Modifier
+        .fillMaxSize()
+        .padding(18.dp)
+        .then(if (mode == CalendarMode.MONTH || mode == CalendarMode.DAY) Modifier.verticalScroll(pageScroll) else Modifier)
+        .pointerInput(mode) {
+            var totalDrag = 0f
+            detectHorizontalDragGestures(
+                onHorizontalDrag = { change, dragAmount ->
+                    change.consume()
+                    totalDrag += dragAmount
+                },
+                onDragEnd = {
+                    if (kotlin.math.abs(totalDrag) > 100f) {
+                        mode = when {
+                            totalDrag < 0 && mode == CalendarMode.MONTH -> CalendarMode.WEEK
+                            totalDrag < 0 && mode == CalendarMode.WEEK -> CalendarMode.DAY
+                            totalDrag > 0 && mode == CalendarMode.DAY -> CalendarMode.WEEK
+                            totalDrag > 0 && mode == CalendarMode.WEEK -> CalendarMode.MONTH
+                            else -> mode
+                        }
+                    }
+                }
+            )
+        }
+    Column(pageModifier) {
         Header("我的时间 · ${year}年${month}月", "日程", "＋ 创建日程", { onAdd("%04d-%02d-%02d".format(year, month, selectedDay)) })
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("‹", color = MainText, fontSize = 26.sp, modifier = Modifier.clickable { month--; if (month == 0) { month = 12; year-- }; selectedDay = selectedDay.coerceAtMost(YearMonth.of(year, month).lengthOfMonth()) })
@@ -178,11 +215,29 @@ fun CalendarPage(events: List<CalendarEvent>, onAdd: (String) -> Unit, onEdit: (
             }
         }
         Spacer(Modifier.height(14.dp))
-        when (mode) {
-            CalendarMode.MONTH -> MonthView(year, month, selectedDay, events, onEdit, onSelect = { selectedDay = it }, onDoubleSelect = { selectedDay = it; mode = CalendarMode.DAY })
-            CalendarMode.WEEK -> WeekView(year, month, selectedDay, events, onEdit) { selectedDay = it }
-            CalendarMode.DAY -> DayView(year, month, selectedDay, events, onEdit)
-            CalendarMode.AGENDA -> AgendaView(events, onEdit)
+        AnimatedContent(
+            modifier = Modifier
+                .fillMaxWidth()
+                .then(if (mode == CalendarMode.WEEK) Modifier.weight(1f) else Modifier),
+            targetState = mode,
+            transitionSpec = {
+                val forward = targetState.ordinal > initialState.ordinal
+                if (forward) {
+                    (slideInHorizontally { it } + fadeIn()) togetherWith
+                        (slideOutHorizontally { -it } + fadeOut())
+                } else {
+                    (slideInHorizontally { -it } + fadeIn()) togetherWith
+                        (slideOutHorizontally { it } + fadeOut())
+                }
+            },
+            label = "calendar-view-transition"
+        ) { currentMode ->
+            when (currentMode) {
+                CalendarMode.MONTH -> MonthView(year, month, selectedDay, events, onEdit, onSelect = { selectedDay = it }, onDoubleSelect = { selectedDay = it; mode = CalendarMode.DAY })
+                CalendarMode.WEEK -> WeekView(year, month, selectedDay, events, onEdit) { selectedDate -> year = selectedDate.year; month = selectedDate.monthValue; selectedDay = selectedDate.dayOfMonth }
+                CalendarMode.DAY -> DayView(year, month, selectedDay, events, onEdit)
+                CalendarMode.AGENDA -> AgendaView(events, onEdit)
+            }
         }
     }
 }
@@ -227,44 +282,120 @@ fun MonthView(year: Int, month: Int, selectedDay: Int, events: List<CalendarEven
             }
         }
     }
-    Spacer(Modifier.height(14.dp)); DayScheduleCard(year, month, selectedDay, events, onEdit)
 }
 
 @Composable
-fun WeekView(year: Int, month: Int, selectedDay: Int, events: List<CalendarEvent>, onEdit: (CalendarEvent) -> Unit, onSelect: (Int) -> Unit) {
-    val weekStart = (selectedDay - 1) / 7 * 7 + 1
-    val days = (0..6).map { weekStart + it }.filter { it <= YearMonth.of(year, month).lengthOfMonth() }
-    Surface(color = Panel, shape = RoundedCornerShape(22.dp)) {
-        Column(Modifier.padding(14.dp)) {
-            Text("${year}年${month}月 · 本周", color = MainText, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.height(14.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                days.forEach { day ->
-                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(40.dp).clickable { onSelect(day) }) {
-                        Text(weekdayFor(year, month, day), color = Muted, fontSize = 11.sp)
-                        Spacer(Modifier.height(5.dp))
-                        Surface(color = if (day == selectedDay) Coral else Color.Transparent, shape = RoundedCornerShape(13.dp), modifier = Modifier.size(width = 43.dp, height = 48.dp)) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                                Text("$day", color = if (day == selectedDay) Color.White else MainText, fontWeight = FontWeight.Bold)
-                                Text(lunarLabel(year, month, day), color = if (day == selectedDay) Color.White else Muted, fontSize = 8.sp)
+fun WeekView(year: Int, month: Int, selectedDay: Int, events: List<CalendarEvent>, onEdit: (CalendarEvent) -> Unit, onSelect: (LocalDate) -> Unit) {
+    val selectedDate = LocalDate.of(year, month, selectedDay)
+    // Java time 的 dayOfWeek.value 为周一=1、周日=7；周视图统一从周一开始。
+    val weekStart = selectedDate.minusDays((selectedDate.dayOfWeek.value - 1).toLong())
+    val days = (0..6).map { weekStart.plusDays(it.toLong()) }
+    val currentWeekStart = LocalDate.now().let { it.minusDays((it.dayOfWeek.value - 1).toLong()) }
+    val weekTitle = if (weekStart == currentWeekStart) {
+        "本周"
+    } else {
+        "${weekStart.monthValue}月${weekStart.dayOfMonth}日–${days.last().monthValue}月${days.last().dayOfMonth}日"
+    }
+    Column(Modifier.fillMaxWidth().fillMaxHeight()) {
+        Surface(color = Panel, shape = RoundedCornerShape(22.dp)) {
+            Column(Modifier.padding(14.dp)) {
+                Text("${weekStart.year}年${weekStart.monthValue}月${weekStart.dayOfMonth}日 · $weekTitle", color = MainText, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(14.dp))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    days.forEach { date ->
+                        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(40.dp).clickable { onSelect(date) }) {
+                            Text(weekdayFor(date.year, date.monthValue, date.dayOfMonth), color = Muted, fontSize = 11.sp)
+                            Spacer(Modifier.height(5.dp))
+                            Surface(color = if (date == selectedDate) Coral else Color.Transparent, shape = RoundedCornerShape(13.dp), modifier = Modifier.size(width = 43.dp, height = 48.dp)) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                                    Text("${date.dayOfMonth}", color = if (date == selectedDate) Color.White else MainText, fontWeight = FontWeight.Bold)
+                                    Text(lunarLabel(date.year, date.monthValue, date.dayOfMonth), color = if (date == selectedDate) Color.White else Muted, fontSize = 8.sp)
+                                }
                             }
                         }
                     }
                 }
             }
         }
+        Spacer(Modifier.height(14.dp))
+        WeekScheduleGrid(days, events, onEdit, Modifier.weight(1f))
     }
-    Spacer(Modifier.height(14.dp))
-    Surface(color = Panel, shape = RoundedCornerShape(22.dp)) {
-        Column(Modifier.padding(18.dp)) {
-            Text("本周日程", color = MainText, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-            days.forEach { day ->
-                val dayEvents = events.filter { it.start.contains("-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}") }
-                if (dayEvents.isNotEmpty()) { Text("${month}月${day}日 · ${weekdayFor(year, month, day)}", color = Coral, fontSize = 12.sp, modifier = Modifier.padding(top = 14.dp)); dayEvents.forEach { event -> TimeEvent(event.start.substringAfter(" "), event.title, event.category, eventColor(event.status), categoryColor = categoryColorForName(event.category), onClick = { onEdit(event) }) } }
+}
+
+@Composable
+fun WeekScheduleGrid(days: List<LocalDate>, events: List<CalendarEvent>, onEdit: (CalendarEvent) -> Unit, modifier: Modifier = Modifier) {
+    val gridBorder = ThemeBorder.copy(alpha = .7f)
+
+    Surface(color = Panel, shape = RoundedCornerShape(22.dp), modifier = modifier.fillMaxWidth()) {
+        BoxWithConstraints(Modifier.fillMaxSize()) {
+            val gridHeight = (maxHeight - 16.dp).coerceAtLeast(1.dp)
+            val hourHeight = (gridHeight.value / 24f).dp
+            Column(Modifier.fillMaxSize().padding(vertical = 8.dp)) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .height(gridHeight)
+                    .padding(horizontal = 8.dp)
+            ) {
+                days.forEach { date ->
+                    val dayEvents = events.filter { it.start.startsWith(date.toString()) }
+                    Box(
+                        Modifier
+                            .weight(1f)
+                            .height(gridHeight)
+                            .clipToBounds()
+                            .border(BorderStroke(1.dp, gridBorder))
+                    ) {
+                        Column {
+                            repeat(24) {
+                                Box(
+                                    Modifier
+                                        .height(hourHeight)
+                                        .fillMaxWidth()
+                                        .border(BorderStroke(.5.dp, gridBorder))
+                                )
+                            }
+                        }
+                        dayEvents.forEach { event ->
+                            val startMinutes = eventTimeMinutes(event.start).coerceIn(0, 1440)
+                            val endMinutes = eventTimeMinutes(event.end).coerceIn(startMinutes, 1440)
+                            val gridHeightValue = gridHeight.value
+                            val startOffset = (gridHeightValue * startMinutes / 1440f).dp
+                            val durationHeight = (gridHeightValue * (endMinutes - startMinutes) / 1440f).dp
+                            Surface(
+                                color = categoryColorForName(event.category).copy(alpha = .92f),
+                                contentColor = Color.White,
+                                shape = RoundedCornerShape(7.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(durationHeight)
+                                    .offset(y = startOffset)
+                                    .padding(2.dp)
+                                    .clickable { onEdit(event) }
+                            ) {
+                                Text(
+                                    event.title,
+                                    color = Color.White,
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    textAlign = TextAlign.Center,
+                                    maxLines = 3,
+                                    modifier = Modifier.fillMaxWidth().padding(3.dp)
+                                )
+                            }
+                        }
+                    }
+                }
             }
-            if (events.none { it.start.contains("-${month.toString().padStart(2, '0')}") }) Text("本周还没有日程", color = Muted, modifier = Modifier.padding(top = 16.dp))
+            }
         }
     }
+}
+
+fun eventTimeMinutes(value: String): Int {
+    val time = value.substringAfter(" ", value)
+    val parts = time.split(":")
+    return (parts.getOrNull(0)?.toIntOrNull() ?: 0) * 60 + (parts.getOrNull(1)?.toIntOrNull() ?: 0)
 }
 
 @Composable fun DayView(year: Int, month: Int, day: Int, events: List<CalendarEvent>, onEdit: (CalendarEvent) -> Unit) {
