@@ -12,7 +12,7 @@ class UserPublic(BaseModel):
 
 
 class RegisterRequest(BaseModel):
-    username: str = Field(min_length=3, max_length=40, pattern=r"^[A-Za-z0-9_]+$")
+    username: str = Field(min_length=3, max_length=40, pattern=r"^\S+$")
     email: EmailStr
     password: str = Field(min_length=8, max_length=128)
     display_name: str = Field(min_length=1, max_length=80)
@@ -71,4 +71,3 @@ class SyncResponse(BaseModel):
     accepted_invites: list[InvitePublic]
     calendar_cache: list[dict]
     server_time: datetime
-

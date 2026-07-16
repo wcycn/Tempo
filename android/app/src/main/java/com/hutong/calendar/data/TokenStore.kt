@@ -19,17 +19,19 @@ class TokenStore(context: Context) {
             .putString(KEY_TOKEN, session.accessToken)
             .putString(KEY_USER_ID, session.user.id)
             .putString(KEY_USER_NAME, session.user.displayName)
+            .putString(KEY_USER_EMAIL, session.user.email)
             .apply()
     }
     fun cachedUser(): UserProfile? {
         val id = prefs.getString(KEY_USER_ID, null) ?: return null
-        return UserProfile(id, prefs.getString(KEY_USER_NAME, "") ?: "")
+        return UserProfile(id, prefs.getString(KEY_USER_NAME, "") ?: "", email = prefs.getString(KEY_USER_EMAIL, null))
     }
-    fun clear() { prefs.edit().remove(KEY_TOKEN).remove(KEY_USER_ID).remove(KEY_USER_NAME).apply() }
+    fun clear() { prefs.edit().remove(KEY_TOKEN).remove(KEY_USER_ID).remove(KEY_USER_NAME).remove(KEY_USER_EMAIL).apply() }
 
     private companion object {
         const val KEY_TOKEN = "access_token"
         const val KEY_USER_ID = "user_id"
         const val KEY_USER_NAME = "user_name"
+        const val KEY_USER_EMAIL = "user_email"
     }
 }

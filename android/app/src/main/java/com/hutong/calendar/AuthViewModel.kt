@@ -70,4 +70,4 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
     }
 }
 
-private fun com.hutong.calendar.data.UserDto.toProfile() = UserProfile(id.toString(), displayName)
+private fun com.hutong.calendar.data.UserDto.toProfile() = UserProfile(id.toString(), displayName, email = email)

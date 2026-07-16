@@ -44,11 +44,17 @@ data class CachedCalendarDay(
 
 @Dao
 interface OfflineCalendarDao {
-    @Query("SELECT * FROM cached_events ORDER BY start")
-    suspend fun events(): List<CachedEvent>
+    @Query("SELECT * FROM cached_events WHERE ownerId = :ownerId ORDER BY start")
+    suspend fun events(ownerId: String): List<CachedEvent>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun replaceEvents(items: List<CachedEvent>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun saveEvent(item: CachedEvent)
+
+    @Query("DELETE FROM cached_events WHERE id = :id")
+    suspend fun deleteEvent(id: String)
 
     @Query("DELETE FROM cached_events")
     suspend fun clearEvents()
@@ -78,4 +84,3 @@ abstract class TempoDatabase : RoomDatabase() {
         }
     }
 }
-

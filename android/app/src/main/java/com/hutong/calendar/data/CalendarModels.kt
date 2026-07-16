@@ -13,7 +13,7 @@ data class CalendarEvent(
 
 enum class EventStatus { HARD, FREE, FLEXIBLE, PENDING }
 
-data class UserProfile(val id: String, val displayName: String, val avatarUrl: String? = null)
+data class UserProfile(val id: String, val displayName: String, val avatarUrl: String? = null, val email: String? = null)
 
 data class Invite(
     val id: String,
