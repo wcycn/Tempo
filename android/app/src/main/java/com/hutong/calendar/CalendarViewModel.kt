@@ -14,9 +14,11 @@ import com.hutong.calendar.data.TokenStore
 import com.hutong.calendar.data.TempoApiFactory
 import com.hutong.calendar.data.AvailabilityBlockDto
 import com.hutong.calendar.data.AvailabilityUpdateDto
+import com.hutong.calendar.data.CalendarDataRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import java.time.LocalDate
 
 class CalendarViewModel(application: Application) : AndroidViewModel(application) {
     private val local = TempoDatabase.get(application).offlineCalendarDao()
@@ -28,18 +30,24 @@ class CalendarViewModel(application: Application) : AndroidViewModel(application
     val events: List<CalendarEvent> get() = _events.value
     private val _error = MutableStateFlow<String?>(null)
     val error = _error.asStateFlow()
+    private val _loading = MutableStateFlow(false)
+    val loading = _loading.asStateFlow()
 
     init { refresh() }
 
     fun refresh() = viewModelScope.launch {
+        _loading.value = true
         try {
             _error.value = null
-            _events.value = local.events(ownerId).map { it.toDomain() }
+            val localEvents = local.events(ownerId).map { it.toDomain() }
+            val systemEvents = CalendarDataRepository.readSystemEvents(getApplication())
+            _events.value = (localEvents + systemEvents).distinctBy { it.id }.sortedBy { it.start }
+            cacheCalendarInfo()
             publishAvailability(null)
         } catch (error: Exception) {
             _events.value = local.events(ownerId).map { it.toDomain() }
             _error.value = error.message ?: "当前离线，已显示本地日程"
-        }
+        } finally { _loading.value = false }
     }
 
     fun saveEvent(event: CalendarEvent) = viewModelScope.launch {
@@ -63,13 +71,25 @@ class CalendarViewModel(application: Application) : AndroidViewModel(application
         } catch (error: Exception) { _error.value = error.message ?: "删除日程失败" }
     }
 
+    fun clearError() { _error.value = null }
+
+    private suspend fun cacheCalendarInfo() {
+        val start = LocalDate.now().minusDays(365)
+        val days = (0..730).map { dateOffset ->
+            val date = start.plusDays(dateOffset.toLong())
+            val info = CalendarInfoProvider.info(date)
+            com.hutong.calendar.data.CachedCalendarDay(ownerId, date.toString(), date.toString(), info.lunar, info.festival, info.solarTerm)
+        }
+        local.replaceCalendarDays(days)
+    }
+
     private suspend fun publishAvailability(date: String?) {
         if (tokenStore.get() == null) return
         runCatching {
             val all = local.events(ownerId)
             val selected = if (date == null) all else all.filter { it.start.startsWith(date) }
             remote.updateAvailability(AvailabilityUpdateDto(selected.map {
-                AvailabilityBlockDto(it.start.substringBefore(" "), it.start.substringAfter(" "), it.end.substringAfter(" "), it.status)
+                AvailabilityBlockDto(it.start.substringBefore(" "), it.start.substringAfter(" "), it.end.substringAfter(" "), if (it.status == EventStatus.PENDING.name) EventStatus.HARD.name else it.status)
             }))
         }
     }

@@ -23,25 +23,31 @@ class InvitesViewModel(application: Application) : AndroidViewModel(application)
     val message = _message.asStateFlow()
     private val _options = MutableStateFlow<List<MatchOptionDto>>(emptyList())
     val options = _options.asStateFlow()
+    private val _loading = MutableStateFlow(false)
+    val loading = _loading.asStateFlow()
 
     fun refresh() = viewModelScope.launch {
         if (store.get().isNullOrBlank()) {
             _items.value = emptyList()
             return@launch
         }
+        _loading.value = true
         runCatching { api.invites() }.onSuccess { _items.value = it }.onFailure { _message.value = friendly(it) }
+        _loading.value = false
     }
-    fun create(receiverId: Int, title: String, startAt: String, endAt: String) = viewModelScope.launch {
+    fun create(receiverId: Int, title: String, startAt: String, endAt: String, onCreated: (InviteDto) -> Unit = {}) = viewModelScope.launch {
         runCatching { api.createInvite(InviteCreateDto(receiverId, title, startAt = startAt, endAt = endAt)) }
-            .onSuccess { refresh(); _message.value = "邀约已发送" }.onFailure { _message.value = friendly(it) }
+            .onSuccess { item -> refresh(); onCreated(item); _message.value = "邀约已发送" }.onFailure { _message.value = friendly(it) }
     }
     fun match(receiverId: Int, durationMinutes: Int, windowStartDate: String? = null, windowEndDate: String? = null, windowStartTime: String? = null, windowEndTime: String? = null) = viewModelScope.launch {
+        _loading.value = true
         runCatching { api.match(MatchRequestDto(receiverId, durationMinutes, java.time.LocalDate.now().toString(), windowStartDate = windowStartDate, windowEndDate = windowEndDate, windowStartTime = windowStartTime, windowEndTime = windowEndTime)) }
             .onSuccess { _options.value = it }.onFailure { _options.value = emptyList(); _message.value = friendly(it) }
+        _loading.value = false
     }
-    fun respond(id: Int, status: String, onAccepted: (InviteDto) -> Unit) = viewModelScope.launch {
+    fun respond(id: Int, status: String, onCompleted: (InviteDto) -> Unit) = viewModelScope.launch {
         runCatching { api.respondInvite(id, com.hutong.calendar.data.FriendResponseDto(status)) }
-            .onSuccess { item -> refresh(); if (status == "ACCEPTED") onAccepted(item) }
+            .onSuccess { item -> refresh(); onCompleted(item) }
             .onFailure { _message.value = friendly(it) }
     }
     fun clearMessage() { _message.value = null }

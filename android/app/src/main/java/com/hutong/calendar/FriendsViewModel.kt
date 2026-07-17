@@ -24,13 +24,17 @@ class FriendsViewModel(application: Application) : AndroidViewModel(application)
     val friendships: StateFlow<List<com.hutong.calendar.data.FriendshipDto>> = _friendships.asStateFlow()
     private val _availability = MutableStateFlow<List<com.hutong.calendar.data.AvailabilityBlockDto>>(emptyList())
     val availability: StateFlow<List<com.hutong.calendar.data.AvailabilityBlockDto>> = _availability.asStateFlow()
+    private val _loading = MutableStateFlow(false)
+    val loading: StateFlow<Boolean> = _loading.asStateFlow()
 
     init { refresh() }
 
     fun refresh() = viewModelScope.launch {
         if (store.get() == null) { _friendships.value = emptyList(); return@launch }
+        _loading.value = true
         runCatching { api.listFriends() }.onSuccess { _friendships.value = it }
             .onFailure { _message.value = friendFacingError(it as? Exception ?: Exception()) }
+        _loading.value = false
     }
 
     fun search(query: String) = viewModelScope.launch {
@@ -61,11 +65,13 @@ class FriendsViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun loadAvailability(friendId: Int, date: String) = viewModelScope.launch {
+        _loading.value = true
         val center = runCatching { LocalDate.parse(date) }.getOrDefault(LocalDate.now())
         val monday = center.minusDays((center.dayOfWeek.value - 1).toLong())
         runCatching { (0..6).flatMap { api.friendAvailability(friendId, monday.plusDays(it.toLong()).toString()) } }
             .onSuccess { _availability.value = it }
             .onFailure { _availability.value = emptyList(); _message.value = friendFacingError(it as? Exception ?: Exception()) }
+        _loading.value = false
     }
 
     fun clearMessage() { _message.value = null }
