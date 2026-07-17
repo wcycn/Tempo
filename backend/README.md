@@ -30,6 +30,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8765 --reload
 - `GET/POST /api/invites`：查询和发起邀约
 - `PATCH /api/invites/{id}`：接收方同意或拒绝邀约
 - `GET /api/sync/snapshot`：获取离线缓存所需的日程、已同意邀约和万年历缓存
+- `POST /api/ai/calendar/parse-audio`：上传登录用户的短录音，返回未保存的日程草稿；未配置智谱密钥时返回 503
 
 除健康检查和注册/登录外的接口，都需要请求头：
 
@@ -50,6 +51,21 @@ python3 scripts/init_db.py
 用户内部数据库主键与对外账号 ID 分离。对外账号 ID 为六位数字，从 `100001` 开始分配；密码只保存摘要，昵称可以通过认证接口修改。
 
 `calendar.db` 只属于本机开发数据，已被 Git 忽略。不要把 `.env`、Token 或数据库文件提交到仓库。
+
+## AI 语音创建日程
+
+AI 服务只运行在后端。Android 不保存或携带智谱 API Key，只将录音上传到 Tempo 后端。后端在内存中转发给智谱，识别完成后返回草稿，客户端必须经过用户确认才写入本地 Room。服务器不保存录音、原始转写文本或 AI 草稿。
+
+在服务器的 `.env` 中配置，不要提交到 Git：
+
+```env
+ZHIPU_API_KEY=你的智谱密钥
+ZHIPU_ASR_MODEL=glm-asr-2512
+ZHIPU_TEXT_MODEL=glm-4-flash
+ZHIPU_BASE_URL=https://open.bigmodel.cn/api/paas/v4
+```
+
+录音由 Android 限制为最多 30 秒，服务端限制为 25 MB。当前接口只支持登录用户调用。
 
 ## Android / 真机连接
 

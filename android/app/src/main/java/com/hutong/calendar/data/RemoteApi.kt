@@ -9,6 +9,10 @@ import retrofit2.http.GET
 import retrofit2.http.POST
 import retrofit2.http.PATCH
 import retrofit2.http.DELETE
+import retrofit2.http.Multipart
+import retrofit2.http.Part
+import okhttp3.MultipartBody
+import okhttp3.RequestBody
 
 data class LoginRequestDto(val account: String, val password: String)
 data class RegisterRequestDto(val username: String, val email: String, val password: String, @SerializedName("display_name") val displayName: String)
@@ -26,6 +30,8 @@ data class InviteDto(val id: Int, @SerializedName("sender_id") val senderId: Int
 data class InviteCreateDto(@SerializedName("receiver_id") val receiverId: Int, val title: String, val description: String? = null, @SerializedName("start_at") val startAt: String, @SerializedName("end_at") val endAt: String)
 data class MatchRequestDto(@SerializedName("receiver_id") val receiverId: Int, @SerializedName("duration_minutes") val durationMinutes: Int, @SerializedName("from_date") val fromDate: String, val days: Int = 7, @SerializedName("window_start_date") val windowStartDate: String? = null, @SerializedName("window_end_date") val windowEndDate: String? = null, @SerializedName("window_start_time") val windowStartTime: String? = null, @SerializedName("window_end_time") val windowEndTime: String? = null)
 data class MatchOptionDto(@SerializedName("start_at") val startAt: String, @SerializedName("end_at") val endAt: String, @SerializedName("match_type") val matchType: String, val score: Int)
+data class CalendarDraftDto(val title: String, val description: String?, val date: String?, @SerializedName("start_time") val startTime: String?, @SerializedName("end_time") val endTime: String?, val category: String, val status: String, @SerializedName("flexible_tail_minutes") val flexibleTailMinutes: Int, val confidence: Double, @SerializedName("missing_fields") val missingFields: List<String>)
+data class CalendarDraftResponseDto(val draft: CalendarDraftDto, val transcript: String?, val provider: String)
 
 interface TempoApi {
     @POST("api/auth/login") suspend fun login(@Body body: LoginRequestDto): AuthResponseDto
@@ -46,6 +52,9 @@ interface TempoApi {
     @POST("api/invites") suspend fun createInvite(@Body body: InviteCreateDto): InviteDto
     @PATCH("api/invites/{inviteId}") suspend fun respondInvite(@retrofit2.http.Path("inviteId") id: Int, @Body body: FriendResponseDto): InviteDto
     @POST("api/invites/match") suspend fun match(@Body body: MatchRequestDto): List<MatchOptionDto>
+    @Multipart
+    @POST("api/ai/calendar/parse-audio")
+    suspend fun parseCalendarAudio(@Part file: MultipartBody.Part, @Part("timezone") timezone: RequestBody, @Part("today") today: RequestBody): CalendarDraftResponseDto
 }
 
 object TempoApiFactory {

@@ -6,6 +6,8 @@ import android.content.pm.PackageManager
 import android.os.SystemClock
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.BorderStroke
@@ -42,7 +44,6 @@ import com.hutong.calendar.data.CategoryStore
 import com.hutong.calendar.data.EventStatus
 import com.hutong.calendar.data.FriendSummary
 import com.hutong.calendar.data.GroupSummary
-import com.hutong.calendar.data.NoticeItem
 import com.hutong.calendar.data.PendingInvite
 import com.hutong.calendar.data.ThemeChoice
 import com.hutong.calendar.data.ThemePreference
@@ -85,10 +86,15 @@ fun HutongApp() {
     val context = LocalContext.current
     val authViewModel: AuthViewModel = viewModel()
     val invitesViewModel: InvitesViewModel = viewModel()
+    val aiVoiceViewModel: AiVoiceViewModel = viewModel()
     val authState by authViewModel.state.collectAsState()
+    val aiVoiceState by aiVoiceViewModel.state.collectAsState()
     val accountScope = (authState as? AuthState.LoggedIn)?.session?.user?.id ?: "guest"
     var themeChoice by remember(accountScope) { mutableStateOf(ThemePreference.load(context, accountScope)) }
     val systemDark = isSystemInDarkTheme()
+    val microphoneLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) aiVoiceViewModel.startRecording()
+    }
     LaunchedEffect(themeChoice, systemDark) {
         currentPalette = if (themeChoice == ThemeChoice.DARK || (themeChoice == ThemeChoice.SYSTEM && systemDark)) DarkPalette else LightPalette
     }
@@ -129,15 +135,34 @@ fun HutongApp() {
     val currentUserId = (authState as? AuthState.LoggedIn)?.session?.user?.id?.toIntOrNull()
     val friends = friendshipDtos.filter { it.status == "ACCEPTED" }.map { FriendSummary(it.friend.id.toString(), it.friend.displayName, "可邀约") }
     val pendingInvites = inviteItems.filter { it.status == "PENDING" }.map { item -> PendingInvite(item.id.toString(), item.title, "${item.startAt.replace('T', ' ')} — ${item.endAt.substringAfter('T')}", if (item.senderId == currentUserId) "我" else "好友") }
-    val notices = contentViewModel.notices
     val groups = contentViewModel.groups
     val remoteEvents by calendarViewModel.eventsState.collectAsState()
     val calendarLoading by calendarViewModel.loading.collectAsState()
     val calendarError by calendarViewModel.error.collectAsState()
-    LaunchedEffect(accountScope) { calendarViewModel.refresh() }
-    LaunchedEffect(accountScope) { friendsViewModel.refresh() }
-    LaunchedEffect(accountScope) { invitesViewModel.refresh() }
     var page by remember { mutableStateOf("日程") }
+    LaunchedEffect(accountScope) { calendarViewModel.refresh() }
+    LaunchedEffect(accountScope, page) {
+        if (page == "找时间") {
+            friendsViewModel.refresh()
+            invitesViewModel.refresh()
+        } else if (page == "日程") {
+            // 日程页只做后台邀约同步，不阻塞本地日历首屏显示。
+            friendsViewModel.refresh()
+            invitesViewModel.refresh()
+        }
+    }
+    LaunchedEffect(inviteItems, friendshipDtos, currentUserId) {
+        inviteItems.forEach { invite ->
+            val eventId = "invite-${invite.id}"
+            if (invite.status == "ACCEPTED") {
+                val otherId = if (currentUserId == invite.senderId) invite.receiverId else invite.senderId
+                val otherName = friends.firstOrNull { it.id == otherId.toString() }?.name ?: "好友"
+                calendarViewModel.saveEvent(CalendarEvent(eventId, currentUserId?.toString() ?: "guest", "${invite.title}(with $otherName)", invite.startAt.replace('T', ' '), invite.endAt.replace('T', ' '), "邀约", EventStatus.HARD))
+            } else if (invite.status in setOf("DECLINED", "CANCELLED", "EXPIRED")) {
+                calendarViewModel.deleteEvent(eventId)
+            }
+        }
+    }
     var showCreate by remember { mutableStateOf(false) }
     var showInvite by remember { mutableStateOf(false) }
     var editingEvent by remember { mutableStateOf<CalendarEvent?>(null) }
@@ -188,7 +213,6 @@ fun HutongApp() {
                         }
                     )
                     "群组" -> GroupPage(groups)
-                    "通知" -> NoticePage(notices)
                     "我的" -> SettingsPage(
                         user = (authState as? AuthState.LoggedIn)?.session?.user,
                         themeChoice = themeChoice,
@@ -203,8 +227,14 @@ fun HutongApp() {
         }
         if (showCreate) CreateEventDialog(
             date = createDate,
+            aiState = aiVoiceState,
+            onVoice = {
+                if (aiVoiceState is AiVoiceState.Recording) aiVoiceViewModel.stopRecording()
+                else if (androidx.core.content.ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) aiVoiceViewModel.startRecording()
+                else microphoneLauncher.launch(Manifest.permission.RECORD_AUDIO)
+            },
             existingEvents = remoteEvents,
-            onSave = { event -> calendarViewModel.saveEvent(event); showCreate = false },
+            onSave = { event -> calendarViewModel.saveEvent(event); aiVoiceViewModel.clear(); showCreate = false },
             onCancel = { showCreate = false }
         )
         editingEvent?.let { event ->
@@ -335,7 +365,13 @@ fun MonthView(year: Int, month: Int, selectedDay: Int, events: List<CalendarEven
                                     }
                                     val prefix = "%04d-%02d-%02d".format(year, month, day)
                                     val dayEvents = events.filter { it.start.startsWith(prefix) }
-                                    if (dayEvents.isNotEmpty()) Row { dayEvents.take(3).forEach { event -> Box(Modifier.size(5.dp).clip(CircleShape).background(eventColor(event.status))); Spacer(Modifier.width(3.dp)) } }
+                                    if (dayEvents.isNotEmpty()) Row(verticalAlignment = Alignment.CenterVertically) {
+                                        dayEvents.take(3).forEach { event ->
+                                            Box(Modifier.size(5.dp).clip(CircleShape).background(eventColor(event.status)))
+                                            Spacer(Modifier.width(3.dp))
+                                        }
+                                        if (dayEvents.size > 3) Text("+${dayEvents.size - 3}", color = Muted, fontSize = 8.sp)
+                                    }
                                 }
                             }
                         }
@@ -400,7 +436,7 @@ fun WeekScheduleGrid(days: List<LocalDate>, events: List<CalendarEvent>, onEdit:
                     .padding(horizontal = 8.dp)
             ) {
                 days.forEach { date ->
-                    val dayEvents = events.filter { it.start.startsWith(date.toString()) }
+                    val dayEvents = events.filter { it.start.substringBefore(" ").trim() == date.toString() }
                     Box(
                         Modifier
                             .weight(1f)
@@ -423,7 +459,7 @@ fun WeekScheduleGrid(days: List<LocalDate>, events: List<CalendarEvent>, onEdit:
                             val endMinutes = eventTimeMinutes(event.end).coerceIn(startMinutes, 1440)
                             val gridHeightValue = gridHeight.value
                             val startOffset = (gridHeightValue * startMinutes / 1440f).dp
-                            val durationHeight = (gridHeightValue * (endMinutes - startMinutes) / 1440f).dp
+                            val durationHeight = (gridHeightValue * (endMinutes - startMinutes) / 1440f).dp.coerceAtLeast(4.dp)
                             Surface(
                                 color = categoryColorForName(event.category).copy(alpha = .92f),
                                 contentColor = Color.White,
@@ -587,7 +623,6 @@ fun FriendWeekTable(blocks: List<com.hutong.calendar.data.AvailabilityBlockDto>)
 @Composable fun InviteCard(invite: PendingInvite, isSender: Boolean, onCancel: () -> Unit, onDecline: () -> Unit, onAccept: () -> Unit) { Surface(color = Panel, shape = RoundedCornerShape(18.dp)) { Column(Modifier.padding(16.dp)) { Row(verticalAlignment = Alignment.CenterVertically) { Box(Modifier.size(38.dp).clip(CircleShape).background(Blue), contentAlignment = Alignment.Center) { Text(invite.inviter.take(1)) }; Spacer(Modifier.width(10.dp)); Column(Modifier.weight(1f)) { Text(if (isSender) "已向好友发起：${invite.title}" else "好友邀请你：${invite.title}", color = MainText, fontWeight = FontWeight.Bold, fontSize = 14.sp); Text(invite.time, color = Muted, fontSize = 11.sp) }; Text("待处理", color = Blue, fontSize = 11.sp) }; Text(if (isSender) "该时间已在你的日历中暂时锁定。" else "你仍可继续接收其他邀约，确认后只保留一个。", color = Muted, fontSize = 11.sp, modifier = Modifier.padding(vertical = 14.dp)); Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) { if (isSender) Button(onClick = onCancel, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Red)) { Text("取消邀约") } else { OutlinedButton(onClick = onDecline, modifier = Modifier.weight(1f)) { Text("拒绝") }; Button(onClick = onAccept, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = Coral)) { Text("同意") } } } } } }
 
 @Composable fun GroupPage(groups: List<GroupSummary>) { SimplePage("一起参加，不被代表", "群组", *groups.flatMap { listOf(it.name, it.activity, it.detail) }.toTypedArray()) }
-@Composable fun NoticePage(notices: List<NoticeItem>) { SimplePage("重要的事，及时知道", "通知", *notices.flatMap { listOf(it.title, it.detail) }.toTypedArray()) }
 @Composable
 fun SettingsPage(user: UserProfile?, themeChoice: ThemeChoice, onThemeChange: (ThemeChoice) -> Unit, onLogin: () -> Unit, onUpdateProfile: (String, String?, String?, String?) -> Unit, onLogout: () -> Unit) {
     val context = LocalContext.current
@@ -694,7 +729,7 @@ fun SettingsPage(user: UserProfile?, themeChoice: ThemeChoice, onThemeChange: (T
 }
 @Composable fun SimplePage(eyebrow: String, title: String, vararg lines: String) { Column(Modifier.fillMaxSize().padding(18.dp)) { Header(eyebrow, title); lines.forEach { line -> Surface(color = Panel, shape = RoundedCornerShape(17.dp), modifier = Modifier.padding(bottom = 10.dp)) { Text(line, color = MainText, fontSize = 15.sp, modifier = Modifier.fillMaxWidth().padding(18.dp)) } } } }
 
-@Composable fun BottomNav(current: String, onSelect: (String) -> Unit) { NavigationBar(containerColor = Panel) { listOf("日程" to "▣", "找时间" to "⌕", "群组" to "♧", "通知" to "♢", "我的" to "⚙").forEach { (name, icon) -> NavigationBarItem(selected = current == name, onClick = { onSelect(name) }, icon = { Text(icon, fontSize = 20.sp) }, label = { Text(name, fontSize = 10.sp) }, colors = NavigationBarItemDefaults.colors(selectedIconColor = Color.White, selectedTextColor = Coral, indicatorColor = Coral, unselectedIconColor = Muted, unselectedTextColor = Muted)) } } }
+@Composable fun BottomNav(current: String, onSelect: (String) -> Unit) { NavigationBar(containerColor = Panel) { listOf("日程" to "▣", "找时间" to "⌕", "群组" to "♧", "我的" to "⚙").forEach { (name, icon) -> NavigationBarItem(selected = current == name, onClick = { onSelect(name) }, icon = { Text(icon, fontSize = 20.sp) }, label = { Text(name, fontSize = 10.sp) }, colors = NavigationBarItemDefaults.colors(selectedIconColor = Color.White, selectedTextColor = Coral, indicatorColor = Coral, unselectedIconColor = Muted, unselectedTextColor = Muted)) } } }
 
 @Composable
 fun tempoFilterChipColors() = FilterChipDefaults.filterChipColors(
@@ -707,9 +742,10 @@ fun tempoFilterChipColors() = FilterChipDefaults.filterChipColors(
 )
 
 @Composable
-fun CreateEventDialog(date: String, existingEvents: List<CalendarEvent>, onSave: (CalendarEvent) -> Unit, onCancel: () -> Unit) {
+fun CreateEventDialog(date: String, aiState: AiVoiceState = AiVoiceState.Idle, onVoice: () -> Unit = {}, existingEvents: List<CalendarEvent>, onSave: (CalendarEvent) -> Unit, onCancel: () -> Unit) {
     val context = LocalContext.current
     var name by remember { mutableStateOf("") }
+    var selectedDate by remember(date) { mutableStateOf(date) }
     var category by remember {
         mutableStateOf(CategoryStore.load(context).firstOrNull()?.name ?: "工作")
     }
@@ -717,11 +753,29 @@ fun CreateEventDialog(date: String, existingEvents: List<CalendarEvent>, onSave:
     var start by remember { mutableStateOf<String?>(null) }
     var end by remember { mutableStateOf<String?>(null) }
     var showPicker by remember { mutableStateOf(false) }
+    LaunchedEffect(aiState) {
+        val ready = aiState as? AiVoiceState.Ready ?: return@LaunchedEffect
+        name = ready.draft.title
+        ready.draft.date?.let { selectedDate = it }
+        ready.draft.startTime?.let { start = it }
+        ready.draft.endTime?.let { end = it }
+        if (ready.draft.category.isNotBlank()) category = ready.draft.category
+        status = when (ready.draft.status) { "FREE" -> "空闲"; "FLEXIBLE" -> "机动"; else -> "硬性" }
+    }
     AlertDialog(onDismissRequest = onCancel, containerColor = Panel, title = { Text("安排一段时间", fontWeight = FontWeight.Bold) }, text = {
         Column {
             OutlinedTextField(value = name, onValueChange = { name = it }, placeholder = { Text("活动名称") }, singleLine = true)
+            Button(onClick = onVoice, colors = ButtonDefaults.buttonColors(containerColor = if (aiState is AiVoiceState.Recording) Red else Coral), modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                Text(when (aiState) { is AiVoiceState.Recording -> "停止录音"; is AiVoiceState.Uploading -> "正在识别…"; else -> "语音填写日程" })
+            }
+            when (aiState) {
+                is AiVoiceState.Uploading -> Text("录音已上传，正在生成日程草稿…", color = Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
+                is AiVoiceState.Ready -> Text("已识别，请检查内容后再点击保存", color = Coral, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
+                is AiVoiceState.Error -> Text(aiState.message, color = Red, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
+                else -> Unit
+            }
             Surface(color = Card, shape = RoundedCornerShape(10.dp), border = BorderStroke(1.dp, ThemeBorder), modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
-                Text("日期：$date", color = MainText, fontSize = 13.sp, modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp))
+                Text("日期：$selectedDate", color = MainText, fontSize = 13.sp, modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp))
             }
             TimeRangeButton(start, end, onClick = { showPicker = true })
             CategorySelector(category = category, onCategoryChange = { category = it })
@@ -731,7 +785,7 @@ fun CreateEventDialog(date: String, existingEvents: List<CalendarEvent>, onSave:
     }, confirmButton = { Button(onClick = {
         val finalName = name.ifBlank { "未命名日程" }
         val eventStatus = when (status) { "空闲" -> EventStatus.FREE; "机动" -> EventStatus.FLEXIBLE; else -> EventStatus.HARD }
-        if (start != null && end != null) onSave(CalendarEvent("local-${UUID.randomUUID()}", "me", finalName, "$date ${start!!}", "$date ${end!!}", category, eventStatus, if (eventStatus == EventStatus.FLEXIBLE) 30 else 0))
+        if (start != null && end != null) onSave(CalendarEvent("local-${UUID.randomUUID()}", "me", finalName, "$selectedDate ${start!!}", "$selectedDate ${end!!}", category, eventStatus, if (eventStatus == EventStatus.FLEXIBLE) 30 else 0))
     }, colors = ButtonDefaults.buttonColors(containerColor = Coral), enabled = start != null && end != null) { Text("保存日程") } }, dismissButton = { TextButton(onClick = onCancel) { Text("取消") } })
     if (showPicker) TimeGridDialog(initialStart = start, initialEnd = end, date = date, existingEvents = existingEvents, onCancel = { showPicker = false }, onSelect = { s, e -> start = s; end = e; showPicker = false })
 }

@@ -5,7 +5,7 @@ from fastapi.responses import JSONResponse
 
 from .config import settings
 from .database import check_db, init_db
-from .routes import auth, events, friends, groups, invites, sync
+from .routes import ai, auth, events, friends, groups, invites, sync
 
 init_db()
 
@@ -32,3 +32,4 @@ app.include_router(groups.router)
 app.include_router(events.router)
 app.include_router(invites.router)
 app.include_router(sync.router)
+app.include_router(ai.router)

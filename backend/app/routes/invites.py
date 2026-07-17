@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..dependencies import current_user
-from ..models import AvailabilityBlock, Invite, User
+from ..models import AvailabilityBlock, CalendarEvent, Friendship, Invite, User
 from ..schemas import InviteCreate, InvitePublic, InviteResponse, MatchOption, MatchRequest
 
 router = APIRouter(prefix="/api/invites", tags=["invites"])
@@ -56,15 +56,38 @@ def _collect_options(start_date, days, slots_needed, by_user, strict_green, wind
 
 @router.get("", response_model=list[InvitePublic])
 def list_invites(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    now = datetime.utcnow()
+    expired = db.scalars(select(Invite).where(
+        or_(Invite.sender_id == user.id, Invite.receiver_id == user.id),
+        Invite.status == "PENDING", Invite.end_at <= now
+    )).all()
+    for item in expired:
+        item.status = "EXPIRED"
+    if expired:
+        db.commit()
     return list(db.scalars(select(Invite).where(or_(Invite.sender_id == user.id, Invite.receiver_id == user.id)).order_by(Invite.updated_at.desc())))
 
 
 @router.post("", response_model=InvitePublic, status_code=201)
 def create_invite(payload: InviteCreate, user: User = Depends(current_user), db: Session = Depends(get_db)):
-    if payload.receiver_id == user.id or not db.get(User, payload.receiver_id):
+    target = db.get(User, payload.receiver_id)
+    if payload.receiver_id == user.id or not target:
         raise HTTPException(400, "接收方不存在或不能邀请自己")
+    relation = db.scalar(select(Friendship).where(
+        or_((Friendship.user_id == user.id) & (Friendship.friend_id == target.id),
+            (Friendship.user_id == target.id) & (Friendship.friend_id == user.id)),
+        Friendship.status == "ACCEPTED"
+    ))
+    if not relation:
+        raise HTTPException(403, "只有已同意的好友可以发起邀约")
     if payload.end_at <= payload.start_at:
         raise HTTPException(400, "结束时间必须晚于开始时间")
+    hard_event = db.scalar(select(CalendarEvent).where(
+        CalendarEvent.user_id == user.id, CalendarEvent.status == "HARD",
+        CalendarEvent.start_at < payload.end_at, CalendarEvent.end_at > payload.start_at
+    ))
+    if hard_event:
+        raise HTTPException(409, "你的这段时间已经被其他硬性事务占用")
     invite = Invite(sender_id=user.id, status="PENDING", **payload.model_dump())
     db.add(invite); db.commit(); db.refresh(invite)
     return invite
@@ -79,6 +102,13 @@ def respond(invite_id: int, payload: InviteResponse, user: User = Depends(curren
         raise HTTPException(403, "只有发起方可以取消邀约")
     if payload.status in {"ACCEPTED", "DECLINED"} and invite.receiver_id != user.id:
         raise HTTPException(403, "只有接收方可以应答邀约")
+    if payload.status == "ACCEPTED":
+        conflict = db.scalar(select(CalendarEvent).where(
+            CalendarEvent.user_id == user.id, CalendarEvent.status == "HARD",
+            CalendarEvent.start_at < invite.end_at, CalendarEvent.end_at > invite.start_at
+        ))
+        if conflict:
+            raise HTTPException(409, "你的这段时间已经被硬性日程占用")
     invite.status = payload.status
     if payload.status == "ACCEPTED":
         conflicts = db.scalars(select(Invite).where(

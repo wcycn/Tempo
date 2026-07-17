@@ -1,3 +1,4 @@
+from datetime import date as date_type, datetime, time, timedelta
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
@@ -5,15 +6,34 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..dependencies import current_user
-from ..models import AvailabilityBlock, Friendship, User
+from ..models import AvailabilityBlock, Friendship, Invite, User
 from ..schemas import AvailabilityPublic, AvailabilityUpdate, FriendRequestCreate, FriendResponse, FriendshipPublic, FriendUserPublic
 
 router = APIRouter(prefix="/api/friends", tags=["friends"])
 
 
+def _range_datetime(date_value: str, clock: str) -> datetime:
+    day = date_type.fromisoformat(date_value)
+    if clock == "24:00":
+        return datetime.combine(day + timedelta(days=1), time.min)
+    return datetime.combine(day, time.fromisoformat(clock))
+
+
 @router.put("/availability", status_code=204)
 def replace_availability(payload: AvailabilityUpdate, user: User = Depends(current_user), db: Session = Depends(get_db)):
     dates = {item.date for item in payload.blocks}
+    hard_ranges = []
+    for item in payload.blocks:
+        if item.status == "HARD":
+            hard_ranges.append((_range_datetime(item.date, item.start_time), _range_datetime(item.date, item.end_time)))
+    if hard_ranges:
+        pending = db.scalars(select(Invite).where(
+            Invite.status == "PENDING",
+            or_(Invite.receiver_id == user.id, Invite.sender_id == user.id)
+        )).all()
+        for invite in pending:
+            if any(invite.start_at < end and invite.end_at > start for start, end in hard_ranges):
+                invite.status = "DECLINED" if invite.receiver_id == user.id else "CANCELLED"
     if dates:
         db.query(AvailabilityBlock).filter(AvailabilityBlock.user_id == user.id, AvailabilityBlock.date.in_(dates)).delete(synchronize_session=False)
     for item in payload.blocks:
@@ -72,7 +92,19 @@ def send_request(payload: FriendRequestCreate, user: User = Depends(current_user
         or_((Friendship.user_id == user.id) & (Friendship.friend_id == target.id),
             (Friendship.user_id == target.id) & (Friendship.friend_id == user.id))))
     if existing:
-        raise HTTPException(409, "好友申请或好友关系已存在")
+        if existing.status == "ACCEPTED":
+            raise HTTPException(409, "你们已经是好友")
+        if existing.status == "PENDING":
+            if existing.user_id == user.id:
+                raise HTTPException(409, "好友申请已经发送，等待对方处理")
+            raise HTTPException(409, "对方已经向你发送好友申请，请先处理申请")
+        existing.user_id = user.id
+        existing.friend_id = target.id
+        existing.status = "PENDING"
+        db.commit()
+        db.refresh(existing)
+        return {"id": existing.id, "user_id": existing.user_id, "friend_id": existing.friend_id,
+                "status": existing.status, "friend": target}
     row = Friendship(user_id=user.id, friend_id=target.id, status="PENDING")
     db.add(row)
     try:

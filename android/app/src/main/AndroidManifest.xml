@@ -1,5 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.READ_CALENDAR" />
     <!-- 内测阶段暂时访问服务器 HTTP；正式环境切换 HTTPS 后删除此属性。 -->
     <application android:usesCleartextTraffic="true" android:icon="@drawable/logo" android:roundIcon="@drawable/logo" android:theme="@style/Theme.HutongCalendar" android:label="Tempo" android:allowBackup="true" android:supportsRtl="true">

@@ -12,7 +12,6 @@ class ContentViewModel : ViewModel() {
     val friends = dataSource.getFriends()
     var pendingInvites by mutableStateOf(dataSource.getPendingInvites())
         private set
-    val notices = dataSource.getNotices()
     val groups = dataSource.getGroups()
 
     fun addInvite(invite: PendingInvite) { dataSource.saveInvite(invite); pendingInvites = dataSource.getPendingInvites() }

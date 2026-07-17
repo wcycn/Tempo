@@ -27,8 +27,6 @@ class FriendsViewModel(application: Application) : AndroidViewModel(application)
     private val _loading = MutableStateFlow(false)
     val loading: StateFlow<Boolean> = _loading.asStateFlow()
 
-    init { refresh() }
-
     fun refresh() = viewModelScope.launch {
         if (store.get() == null) { _friendships.value = emptyList(); return@launch }
         _loading.value = true
@@ -48,7 +46,7 @@ class FriendsViewModel(application: Application) : AndroidViewModel(application)
             _message.value = "不能添加自己"
             return@launch
         }
-        try { api.sendFriendRequest(com.hutong.calendar.data.FriendRequestDto(user.id)); _message.value = "已向 ${user.displayName} 发送好友申请" }
+        try { api.sendFriendRequest(com.hutong.calendar.data.FriendRequestDto(user.id)); refresh(); _message.value = "已向 ${user.displayName} 发送好友申请" }
         catch (error: Exception) { _message.value = friendFacingError(error) }
     }
 
