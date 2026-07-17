@@ -8,7 +8,7 @@ plugins {
 android { namespace = "com.hutong.calendar"; compileSdk = 35
     buildFeatures { buildConfig = true }
     defaultConfig {
-        applicationId = "com.hutong.calendar"; minSdk = 26; targetSdk = 35; versionCode = 1; versionName = "0.1.0"
+        applicationId = "com.hutong.calendar"; minSdk = 26; targetSdk = 35; versionCode = 4; versionName = "0.3.0"
     }
     buildTypes {
         debug {

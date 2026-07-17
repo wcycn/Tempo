@@ -514,6 +514,15 @@
 - 已保留：日视图继续显示当天全部日程，时间选择器允许与已有日程重复选择。
 - 验证：待重新生成 APK 进行真机确认。
 
+### N-054 · v0.3.0 测试版发布准备
+
+- 状态：`done`
+- 已完成：Android 版本号更新为 `versionCode 4`、`versionName 0.3.0`。
+- 已完成：补充月/周视图日程显示修复、AI 语音 WAV 录音和重复录音修复的发布说明。
+- 已完成：补充测试步骤和已知限制，便于朋友进行定向内测。
+- 验证：需要执行 `./gradlew assembleDebug` 生成本次 Release 附件。
+- 发布附件：`android/app/build/outputs/apk/debug/app-debug.apk`。
+
 ## 每次开发节点的记录模板
 
 ```markdown
