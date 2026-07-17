@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     zhipu_base_url: str = "https://open.bigmodel.cn/api/paas/v4"
     ai_audio_max_bytes: int = 25 * 1024 * 1024
     ai_audio_max_seconds: int = 30
+    ai_access_code_hash: str = ""
+    ai_access_secret: str = ""
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

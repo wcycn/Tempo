@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -35,16 +36,35 @@ sealed interface AiVoiceState {
     data class Error(val message: String) : AiVoiceState
 }
 
+sealed interface AiAccessState {
+    data object Disabled : AiAccessState
+    data object Verifying : AiAccessState
+    data object Enabled : AiAccessState
+    data class Error(val message: String) : AiAccessState
+}
+
 class AiVoiceViewModel(application: Application) : AndroidViewModel(application) {
     private val tokenStore = TokenStore(application)
     private val api = TempoApiFactory.create { tokenStore.get() }
     private val _state = MutableStateFlow<AiVoiceState>(AiVoiceState.Idle)
     val state = _state.asStateFlow()
+    private val _access = MutableStateFlow<AiAccessState>(if (tokenStore.getAiAccessToken() != null) AiAccessState.Enabled else AiAccessState.Disabled)
+    val access = _access.asStateFlow()
     private var recorder: AudioRecord? = null
     private var recordingFile: File? = null
     private var recordingJob: Job? = null
     @Volatile private var recordingActive = false
     private var recordingTimeoutJob: Job? = null
+
+    fun verifyAccess(code: String) {
+        if (code.isBlank()) return
+        viewModelScope.launch {
+            _access.value = AiAccessState.Verifying
+            runCatching { api.verifyAiAccess(com.hutong.calendar.data.AiAccessVerifyRequestDto(code)) }
+                .onSuccess { response -> tokenStore.saveAiAccessToken(response.accessToken); _access.value = AiAccessState.Enabled }
+                .onFailure { error -> _access.value = AiAccessState.Error(if (error is HttpException && error.code() == 403) "内测密码错误" else "AI 内测验证失败，请稍后重试") }
+        }
+    }
 
     fun startRecording() {
         if (_state.value is AiVoiceState.Recording) return
@@ -118,7 +138,9 @@ class AiVoiceViewModel(application: Application) : AndroidViewModel(application)
                     return@launch
                 }
                 _state.value = AiVoiceState.Uploading
+                val aiToken = tokenStore.getAiAccessToken() ?: error("请先在“我的”中完成 AI 内测验证")
                 val response = api.parseCalendarAudio(
+                    aiToken,
                     MultipartBody.Part.createFormData("file", file.name, RequestBody.create(MediaType.parse("audio/wav"), file)),
                     RequestBody.create(MediaType.parse("text/plain"), ZoneId.systemDefault().id),
                     RequestBody.create(MediaType.parse("text/plain"), LocalDate.now().toString())
@@ -132,6 +154,27 @@ class AiVoiceViewModel(application: Application) : AndroidViewModel(application)
             } finally {
                 file?.delete()
             }
+        }
+    }
+
+    /** 取消当前录音：停止采集、删除临时音频，不上传也不生成草稿。 */
+    fun cancelRecording() {
+        if (_state.value !is AiVoiceState.Recording) return
+        recordingActive = false
+        recordingTimeoutJob?.cancel()
+        recordingTimeoutJob = null
+        val activeRecorder = recorder
+        recorder = null
+        runCatching { activeRecorder?.stop() }
+        activeRecorder?.release()
+        val writeJob = recordingJob
+        recordingJob = null
+        val file = recordingFile
+        recordingFile = null
+        viewModelScope.launch {
+            writeJob?.cancelAndJoin()
+            file?.delete()
+            _state.value = AiVoiceState.Idle
         }
     }
 

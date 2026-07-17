@@ -11,7 +11,7 @@ class UserPublic(BaseModel):
     id: int
     account_id: int
     username: str
-    email: EmailStr
+    email: str
     display_name: str
     phone: Optional[str] = None
     hobbies: Optional[str] = None
@@ -38,6 +38,9 @@ class FriendUserPublic(BaseModel):
     account_id: int
     username: str
     display_name: str
+    phone: Optional[str] = None
+    hobbies: Optional[str] = None
+    signature: Optional[str] = None
 
 
 class FriendRequestCreate(BaseModel):
@@ -91,6 +94,16 @@ class AvailabilityPublic(AvailabilityBlockInput):
 class LoginRequest(BaseModel):
     account: str = Field(min_length=1)
     password: str = Field(min_length=1, max_length=128)
+
+
+class AiAccessVerifyRequest(BaseModel):
+    code: str = Field(min_length=1, max_length=128)
+
+
+class AiAccessVerifyResponse(BaseModel):
+    enabled: bool
+    access_token: str
+    expires_in: int
 
 
 class AuthResponse(BaseModel):
@@ -157,6 +170,8 @@ class InvitePublic(InviteCreate):
     model_config = ConfigDict(from_attributes=True)
     id: int
     sender_id: int
+    sender_display_name: Optional[str] = None
+    receiver_display_name: Optional[str] = None
     status: str
     updated_at: datetime
 

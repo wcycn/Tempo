@@ -21,7 +21,8 @@ data class UserProfile(
     val accountId: String = id,
     val phone: String? = null,
     val hobbies: String? = null,
-    val signature: String? = null
+    val signature: String? = null,
+    val username: String? = null
 )
 
 data class Invite(

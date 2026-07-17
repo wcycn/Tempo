@@ -26,7 +26,7 @@ class ZhipuCalendarProvider:
         if not settings.zhipu_api_key:
             raise RuntimeError("AI provider is not configured")
         close_client = self.client is None
-        client = self.client or httpx.AsyncClient(timeout=httpx.Timeout(45.0, connect=10.0))
+        client = self.client or httpx.AsyncClient(timeout=httpx.Timeout(90.0, connect=15.0))
         try:
             headers = {"Authorization": f"Bearer {settings.zhipu_api_key}"}
             files = {"file": (filename, audio, content_type or "application/octet-stream")}

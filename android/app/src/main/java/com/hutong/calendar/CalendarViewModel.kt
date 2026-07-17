@@ -33,8 +33,6 @@ class CalendarViewModel(application: Application) : AndroidViewModel(application
     private val _loading = MutableStateFlow(false)
     val loading = _loading.asStateFlow()
 
-    init { refresh() }
-
     fun refresh() = viewModelScope.launch {
         _loading.value = true
         try {

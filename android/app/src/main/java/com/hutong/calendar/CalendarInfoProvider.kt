@@ -14,15 +14,19 @@ data class CalendarDayInfo(
  * 该计算完全离线可用，结果由 CalendarViewModel 写入 Room 缓存。
  */
 object CalendarInfoProvider {
-    fun info(date: LocalDate): CalendarDayInfo {
-        val lunar = Solar.fromYmd(date.year, date.monthValue, date.dayOfMonth).lunar
-        val lunarLabel = if (lunar.dayInChinese == "初一") lunar.monthInChinese else lunar.dayInChinese
-        val festivals = lunar.festivals.toList().ifEmpty { lunar.otherFestivals.toList() }
-        return CalendarDayInfo(
-            lunar = lunarLabel,
-            festival = festivals.firstOrNull(),
-            solarTerm = lunar.jieQi.takeIf { it.isNotBlank() }
-        )
+    private val cache = HashMap<LocalDate, CalendarDayInfo>()
+
+    fun info(date: LocalDate): CalendarDayInfo = synchronized(cache) {
+        cache[date] ?: run {
+            val lunar = Solar.fromYmd(date.year, date.monthValue, date.dayOfMonth).lunar
+            val lunarLabel = if (lunar.dayInChinese == "初一") lunar.monthInChinese else lunar.dayInChinese
+            val festivals = lunar.festivals.toList().ifEmpty { lunar.otherFestivals.toList() }
+            CalendarDayInfo(
+                lunar = lunarLabel,
+                festival = festivals.firstOrNull(),
+                solarTerm = lunar.jieQi.takeIf { it.isNotBlank() }
+            ).also { cache[date] = it }
+        }
     }
 
     fun lunarLabel(date: LocalDate): String = info(date).lunar

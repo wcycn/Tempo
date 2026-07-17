@@ -11,6 +11,15 @@ from ..schemas import InviteCreate, InvitePublic, InviteResponse, MatchOption, M
 router = APIRouter(prefix="/api/invites", tags=["invites"])
 
 
+def _invite_payload(invite: Invite, db: Session) -> dict:
+    sender = db.get(User, invite.sender_id)
+    receiver = db.get(User, invite.receiver_id)
+    payload = InvitePublic.model_validate(invite).model_dump()
+    payload["sender_display_name"] = sender.display_name if sender else None
+    payload["receiver_display_name"] = receiver.display_name if receiver else None
+    return payload
+
+
 @router.post("/match", response_model=list[MatchOption])
 def match_times(payload: MatchRequest, user: User = Depends(current_user), db: Session = Depends(get_db)):
     if payload.receiver_id == user.id or not db.get(User, payload.receiver_id):
@@ -27,6 +36,7 @@ def match_times(payload: MatchRequest, user: User = Depends(current_user), db: S
 
 def _collect_options(start_date, days, slots_needed, by_user, strict_green, window_start_date=None, window_end_date=None, window_start_time=None, window_end_time=None):
     result = []
+    now = datetime.now()
     for offset in range(days):
         current = start_date + timedelta(days=offset)
         valid = []
@@ -36,6 +46,9 @@ def _collect_options(start_date, days, slots_needed, by_user, strict_green, wind
                 (window_start_date is None or window_start_date <= str(current) <= window_end_date)
                 and (window_start_time is None or window_start_time <= start < window_end_time)
             )
+            slot_start = datetime.combine(current, time(index // 4, (index % 4) * 15))
+            if slot_start <= now:
+                in_window = False
             statuses = []
             for uid in by_user:
                 block = next((b for b in by_user[uid] if b.date == str(current) and b.start_time <= start < b.end_time), None)
@@ -49,6 +62,8 @@ def _collect_options(start_date, days, slots_needed, by_user, strict_green, wind
                 start_index = end_index - slots_needed
                 start_dt = datetime.combine(current, time(start_index // 4, (start_index % 4) * 15))
                 end_dt = start_dt + timedelta(minutes=slots_needed * 15)
+                if start_dt <= now:
+                    continue
                 result.append(MatchOption(start_at=start_dt, end_at=end_dt, match_type="PURE_GREEN" if strict_green else "WITH_FLEXIBLE", score=100 - offset if strict_green else 70 - offset))
                 run = 0
     return result
@@ -65,7 +80,8 @@ def list_invites(user: User = Depends(current_user), db: Session = Depends(get_d
         item.status = "EXPIRED"
     if expired:
         db.commit()
-    return list(db.scalars(select(Invite).where(or_(Invite.sender_id == user.id, Invite.receiver_id == user.id)).order_by(Invite.updated_at.desc())))
+    invites = list(db.scalars(select(Invite).where(or_(Invite.sender_id == user.id, Invite.receiver_id == user.id)).order_by(Invite.updated_at.desc())))
+    return [_invite_payload(item, db) for item in invites]
 
 
 @router.post("", response_model=InvitePublic, status_code=201)
@@ -82,6 +98,8 @@ def create_invite(payload: InviteCreate, user: User = Depends(current_user), db:
         raise HTTPException(403, "只有已同意的好友可以发起邀约")
     if payload.end_at <= payload.start_at:
         raise HTTPException(400, "结束时间必须晚于开始时间")
+    if payload.start_at <= datetime.utcnow():
+        raise HTTPException(400, "不能邀约已经过去的时间")
     hard_event = db.scalar(select(CalendarEvent).where(
         CalendarEvent.user_id == user.id, CalendarEvent.status == "HARD",
         CalendarEvent.start_at < payload.end_at, CalendarEvent.end_at > payload.start_at
@@ -90,7 +108,7 @@ def create_invite(payload: InviteCreate, user: User = Depends(current_user), db:
         raise HTTPException(409, "你的这段时间已经被其他硬性事务占用")
     invite = Invite(sender_id=user.id, status="PENDING", **payload.model_dump())
     db.add(invite); db.commit(); db.refresh(invite)
-    return invite
+    return _invite_payload(invite, db)
 
 
 @router.patch("/{invite_id}", response_model=InvitePublic)
@@ -98,6 +116,10 @@ def respond(invite_id: int, payload: InviteResponse, user: User = Depends(curren
     invite = db.scalar(select(Invite).where(Invite.id == invite_id, or_(Invite.receiver_id == user.id, Invite.sender_id == user.id)))
     if not invite or invite.status != "PENDING":
         raise HTTPException(404, "待应答邀约不存在")
+    if invite.start_at <= datetime.utcnow():
+        invite.status = "EXPIRED"
+        db.commit()
+        raise HTTPException(400, "该邀约时间已经过去")
     if payload.status == "CANCELLED" and invite.sender_id != user.id:
         raise HTTPException(403, "只有发起方可以取消邀约")
     if payload.status in {"ACCEPTED", "DECLINED"} and invite.receiver_id != user.id:
@@ -117,4 +139,4 @@ def respond(invite_id: int, payload: InviteResponse, user: User = Depends(curren
         for conflict in conflicts:
             conflict.status = "DECLINED"
     db.commit(); db.refresh(invite)
-    return invite
+    return _invite_payload(invite, db)

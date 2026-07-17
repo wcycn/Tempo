@@ -13,12 +13,15 @@ import retrofit2.http.Multipart
 import retrofit2.http.Part
 import okhttp3.MultipartBody
 import okhttp3.RequestBody
+import java.util.concurrent.TimeUnit
 
 data class LoginRequestDto(val account: String, val password: String)
+data class AiAccessVerifyRequestDto(val code: String)
+data class AiAccessVerifyResponseDto(val enabled: Boolean, @SerializedName("access_token") val accessToken: String, @SerializedName("expires_in") val expiresIn: Int)
 data class RegisterRequestDto(val username: String, val email: String, val password: String, @SerializedName("display_name") val displayName: String)
 data class UserDto(val id: Int, @SerializedName("account_id") val accountId: Int, val username: String, val email: String, @SerializedName("display_name") val displayName: String, val phone: String? = null, val hobbies: String? = null, val signature: String? = null)
 data class ProfileUpdateRequestDto(@SerializedName("display_name") val displayName: String? = null, val phone: String? = null, val hobbies: String? = null, val signature: String? = null)
-data class FriendUserDto(val id: Int, @SerializedName("account_id") val accountId: Int, val username: String, @SerializedName("display_name") val displayName: String)
+data class FriendUserDto(val id: Int, @SerializedName("account_id") val accountId: Int, val username: String, @SerializedName("display_name") val displayName: String, val phone: String? = null, val hobbies: String? = null, val signature: String? = null)
 data class FriendshipDto(val id: Int, @SerializedName("user_id") val userId: Int, @SerializedName("friend_id") val friendId: Int, val status: String, val friend: FriendUserDto)
 data class FriendRequestDto(@SerializedName("friend_id") val friendId: Int)
 data class FriendResponseDto(val status: String)
@@ -26,7 +29,7 @@ data class AvailabilityBlockDto(val date: String, @SerializedName("start_time") 
 data class AvailabilityUpdateDto(val blocks: List<AvailabilityBlockDto>)
 data class AuthResponseDto(@SerializedName("access_token") val accessToken: String, @SerializedName("token_type") val tokenType: String, val user: UserDto)
 data class SessionDto(@SerializedName("session_key") val sessionKey: String, @SerializedName("created_at") val createdAt: String, @SerializedName("expires_at") val expiresAt: String, @SerializedName("is_current") val isCurrent: Boolean)
-data class InviteDto(val id: Int, @SerializedName("sender_id") val senderId: Int, @SerializedName("receiver_id") val receiverId: Int, val title: String, val description: String?, @SerializedName("start_at") val startAt: String, @SerializedName("end_at") val endAt: String, val status: String)
+data class InviteDto(val id: Int, @SerializedName("sender_id") val senderId: Int, @SerializedName("receiver_id") val receiverId: Int, val title: String, val description: String?, @SerializedName("sender_display_name") val senderDisplayName: String? = null, @SerializedName("receiver_display_name") val receiverDisplayName: String? = null, @SerializedName("start_at") val startAt: String, @SerializedName("end_at") val endAt: String, val status: String)
 data class InviteCreateDto(@SerializedName("receiver_id") val receiverId: Int, val title: String, val description: String? = null, @SerializedName("start_at") val startAt: String, @SerializedName("end_at") val endAt: String)
 data class MatchRequestDto(@SerializedName("receiver_id") val receiverId: Int, @SerializedName("duration_minutes") val durationMinutes: Int, @SerializedName("from_date") val fromDate: String, val days: Int = 7, @SerializedName("window_start_date") val windowStartDate: String? = null, @SerializedName("window_end_date") val windowEndDate: String? = null, @SerializedName("window_start_time") val windowStartTime: String? = null, @SerializedName("window_end_time") val windowEndTime: String? = null)
 data class MatchOptionDto(@SerializedName("start_at") val startAt: String, @SerializedName("end_at") val endAt: String, @SerializedName("match_type") val matchType: String, val score: Int)
@@ -41,6 +44,7 @@ interface TempoApi {
     @GET("api/auth/sessions") suspend fun sessions(): List<SessionDto>
     @DELETE("api/auth/sessions/{sessionKey}") suspend fun revokeSession(@retrofit2.http.Path("sessionKey") sessionKey: String)
     @PATCH("api/auth/me") suspend fun updateProfile(@Body body: ProfileUpdateRequestDto): UserDto
+    @POST("api/ai/access/verify") suspend fun verifyAiAccess(@Body body: AiAccessVerifyRequestDto): AiAccessVerifyResponseDto
     @GET("api/friends/search") suspend fun searchFriends(@retrofit2.http.Query("q") query: String): List<FriendUserDto>
     @GET("api/friends") suspend fun listFriends(): List<FriendshipDto>
     @POST("api/friends/requests") suspend fun sendFriendRequest(@Body body: FriendRequestDto): FriendshipDto
@@ -54,18 +58,23 @@ interface TempoApi {
     @POST("api/invites/match") suspend fun match(@Body body: MatchRequestDto): List<MatchOptionDto>
     @Multipart
     @POST("api/ai/calendar/parse-audio")
-    suspend fun parseCalendarAudio(@Part file: MultipartBody.Part, @Part("timezone") timezone: RequestBody, @Part("today") today: RequestBody): CalendarDraftResponseDto
+    suspend fun parseCalendarAudio(@retrofit2.http.Header("X-Tempo-AI-Token") aiToken: String, @Part file: MultipartBody.Part, @Part("timezone") timezone: RequestBody, @Part("today") today: RequestBody): CalendarDraftResponseDto
 }
 
 object TempoApiFactory {
     fun create(tokenProvider: () -> String?): TempoApi = Retrofit.Builder()
         .baseUrl(BuildConfig.API_BASE_URL)
         .addConverterFactory(GsonConverterFactory.create())
-        .client(okhttp3.OkHttpClient.Builder().addInterceptor { chain ->
-            val request = chain.request().newBuilder()
-            tokenProvider()?.let { request.header("Authorization", "Bearer $it") }
-            chain.proceed(request.build())
-        }.build())
+        .client(okhttp3.OkHttpClient.Builder()
+            .connectTimeout(20, TimeUnit.SECONDS)
+            .writeTimeout(90, TimeUnit.SECONDS)
+            .readTimeout(120, TimeUnit.SECONDS)
+            .callTimeout(150, TimeUnit.SECONDS)
+            .addInterceptor { chain ->
+                val request = chain.request().newBuilder()
+                tokenProvider()?.let { request.header("Authorization", "Bearer $it") }
+                chain.proceed(request.build())
+            }.build())
         .build()
         .create(TempoApi::class.java)
 }

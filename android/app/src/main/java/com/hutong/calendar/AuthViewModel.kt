@@ -25,6 +25,8 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
     private val api = TempoApiFactory.create { tokenStore.get() }
     private val _state = MutableStateFlow<AuthState>(if (tokenStore.get() == null) AuthState.LoggedOut else AuthState.Loading)
     val state: StateFlow<AuthState> = _state.asStateFlow()
+    private val _message = MutableStateFlow<String?>(null)
+    val message = _message.asStateFlow()
 
     init {
         if (tokenStore.get() != null) refreshUser()
@@ -41,14 +43,18 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
     fun updateProfile(displayName: String, phone: String?, hobbies: String?, signature: String?) = viewModelScope.launch {
         val current = _state.value as? AuthState.LoggedIn ?: return@launch
         try {
+            _message.value = null
             val user = api.updateProfile(com.hutong.calendar.data.ProfileUpdateRequestDto(displayName.trim(), phone?.trim(), hobbies?.trim(), signature?.trim()))
             val session = AuthSession(current.session.accessToken, user.toProfile())
             tokenStore.save(session)
             _state.value = AuthState.LoggedIn(session)
         } catch (error: Exception) {
-            _state.value = AuthState.Error(userFacingError(error, "资料保存失败"))
+            _state.value = current
+            _message.value = profileFacingError(error)
         }
     }
+
+    fun clearMessage() { _message.value = null }
 
     fun updateDisplayName(displayName: String) = updateProfile(displayName, null, null, null)
 
@@ -87,7 +93,7 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
     }
 }
 
-private fun com.hutong.calendar.data.UserDto.toProfile() = UserProfile(id.toString(), displayName, email = email, accountId = accountId.toString(), phone = phone, hobbies = hobbies, signature = signature)
+private fun com.hutong.calendar.data.UserDto.toProfile() = UserProfile(id.toString(), displayName, email = email, accountId = accountId.toString(), phone = phone, hobbies = hobbies, signature = signature, username = username)
 
 private fun userFacingError(error: Exception, fallback: String): String = when (error) {
     is HttpException -> when (error.code()) {
@@ -96,6 +102,17 @@ private fun userFacingError(error: Exception, fallback: String): String = when (
         422 -> "输入内容不符合要求，请检查后重试"
         in 500..599 -> "服务器暂时不可用，请稍后重试"
         else -> fallback
+    }
+    else -> "网络不可用，请检查网络连接后重试"
+}
+
+private fun profileFacingError(error: Exception): String = when (error) {
+    is HttpException -> when (error.code()) {
+        401 -> "登录状态已失效，请重新登录后再保存资料"
+        404 -> "服务器尚未启用资料保存接口，请重启后端服务"
+        422 -> "资料内容不符合要求，请检查昵称和文字长度"
+        in 500..599 -> "服务器保存资料失败，请稍后重试"
+        else -> "资料保存失败（HTTP ${error.code()}）"
     }
     else -> "网络不可用，请检查网络连接后重试"
 }
