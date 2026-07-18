@@ -808,3 +808,12 @@
 - 已完成：新增 [`docs/release_checklist.md`](release_checklist.md)，统一记录正式发布前的安全、构建、备份和发布材料检查。
 - 已完成：README 增加 CI 和本地安全检查说明。
 - 待验证：推送后确认 GitHub Actions 在仓库环境中正常运行；如果 Android 依赖下载受网络限制，再根据日志配置缓存或镜像。
+
+### N-082 · v0.4.0-beta 发布准备
+
+- 状态：`ready-for-build`
+- 已完成：Android `versionCode` 更新为 5，`versionName` 更新为 0.4.0。
+- 已完成：新增 `docs/releases/tempo-v0.4.0.md`，记录群组、模板导入、标签管理和工程检查更新。
+- 已完成：README 更新当前版本、下载说明和版本链接。
+- 待完成：开发者重新生成 APK，确认 GitHub Actions 通过后创建 `v0.4.0-beta` GitHub Release。
+- 待完成：邀请同学进行小范围内测并收集反馈。

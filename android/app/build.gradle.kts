@@ -12,7 +12,7 @@ val tempoApiBaseUrl = providers.gradleProperty("TEMPO_API_BASE_URL")
 android { namespace = "com.hutong.calendar"; compileSdk = 35
     buildFeatures { buildConfig = true }
     defaultConfig {
-        applicationId = "com.hutong.calendar"; minSdk = 26; targetSdk = 35; versionCode = 4; versionName = "0.3.0"
+        applicationId = "com.hutong.calendar"; minSdk = 26; targetSdk = 35; versionCode = 5; versionName = "0.4.0"
     }
     buildTypes {
         debug {

@@ -12,14 +12,14 @@ Tempo 当前仅支持 Android 系统。
 - 暂不支持鸿蒙系统
 - Android 用户可以直接下载 GitHub Releases 中的 APK 安装包进行体验
 
-当前最新测试版为 `Tempo v0.3.0`，主要用于 Android 内测，欢迎大家试用并提出建议。如果你熟悉 iOS、鸿蒙、Android、后端、UI/UX、测试或产品设计，欢迎联系我一起开发；当然，也欢迎所有对项目感兴趣的朋友参与贡献。
+当前最新测试版为 `Tempo v0.4.0-beta`，主要用于 Android 内测，欢迎大家试用并提出建议。如果你熟悉 iOS、鸿蒙、Android、后端、UI/UX、测试或产品设计，欢迎联系我一起开发；当然，也欢迎所有对项目感兴趣的朋友参与贡献。
 
-当前双人邀约内测说明见 [`docs/releases/tempo-v0.2.0.md`](docs/releases/tempo-v0.2.0.md)，本次测试版说明见 [`docs/releases/tempo-v0.3.0.md`](docs/releases/tempo-v0.3.0.md)。
+当前版本说明见 [`docs/releases/tempo-v0.4.0.md`](docs/releases/tempo-v0.4.0.md)，历史版本说明见 [`docs/releases/tempo-v0.3.0.md`](docs/releases/tempo-v0.3.0.md)。
 
 ### Android 安装
 
 1. 打开项目的 GitHub `Releases` 页面。
-2. 选择最新版本，例如 `Tempo v0.3.0`。
+2. 选择最新版本，例如 `Tempo v0.4.0-beta`。
 3. 下载其中的 `app-debug.apk`。
 4. 在 Android 手机上打开 APK 并完成安装。
 5. 如果系统提示权限，请允许当前浏览器或文件管理器“安装未知来源应用”。
