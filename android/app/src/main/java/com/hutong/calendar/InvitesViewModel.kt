@@ -50,6 +50,11 @@ class InvitesViewModel(application: Application) : AndroidViewModel(application)
             .onSuccess { item -> refresh(); onCompleted(item) }
             .onFailure { _message.value = friendly(it) }
     }
+    fun delete(id: Int) = viewModelScope.launch {
+        runCatching { api.deleteInvite(id) }
+            .onSuccess { _items.value = _items.value.filterNot { it.id == id }; _message.value = "已删除这条邀约记录" }
+            .onFailure { _message.value = friendly(it) }
+    }
     fun clearMessage() { _message.value = null }
     fun clearOptions() { _options.value = emptyList() }
     private fun friendly(error: Throwable) = if (error is HttpException && error.code() in 500..599) "服务器暂时不可用，请稍后重试" else "邀约操作失败，请稍后重试"

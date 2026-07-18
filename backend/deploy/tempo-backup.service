@@ -1,0 +1,8 @@
+[Unit]
+Description=Tempo SQLite backup
+
+[Service]
+Type=oneshot
+User=tempo
+WorkingDirectory=/srv/tempo/app
+ExecStart=/srv/tempo/venv/bin/python3 scripts/backup_db.py --keep-days 14

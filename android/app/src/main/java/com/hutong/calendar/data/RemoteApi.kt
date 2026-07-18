@@ -25,6 +25,14 @@ data class FriendUserDto(val id: Int, @SerializedName("account_id") val accountI
 data class FriendshipDto(val id: Int, @SerializedName("user_id") val userId: Int, @SerializedName("friend_id") val friendId: Int, val status: String, val friend: FriendUserDto)
 data class FriendRequestDto(@SerializedName("friend_id") val friendId: Int)
 data class FriendResponseDto(val status: String)
+data class GroupDto(val id: Int, @SerializedName("owner_id") val ownerId: Int, val name: String, val members: List<FriendUserDto> = emptyList())
+data class GroupActivityDto(val id: Int, @SerializedName("activity_code") val activityCode: String = "", @SerializedName("group_id") val groupId: Int, @SerializedName("creator_id") val creatorId: Int, @SerializedName("creator_display_name") val creatorDisplayName: String? = null, val title: String, val description: String? = null, @SerializedName("duration_minutes") val durationMinutes: Int, @SerializedName("min_participants") val minParticipants: Int, @SerializedName("participant_mode") val participantMode: String = "MINIMUM", @SerializedName("deadline_at") val deadlineAt: String, @SerializedName("time_rule") val timeRule: String, @SerializedName("fixed_start_at") val fixedStartAt: String? = null, @SerializedName("fixed_end_at") val fixedEndAt: String? = null, val status: String, @SerializedName("proposed_start_at") val proposedStartAt: String? = null, @SerializedName("proposed_end_at") val proposedEndAt: String? = null, val round: Int, val participants: List<FriendUserDto> = emptyList(), @SerializedName("pending_confirmation_ids") val pendingConfirmationIds: List<Int> = emptyList(), @SerializedName("confirmed_count") val confirmedCount: Int = 0, @SerializedName("pending_count") val pendingCount: Int = 0, @SerializedName("declined_count") val declinedCount: Int = 0, @SerializedName("confirmed_participant_ids") val confirmedParticipantIds: List<Int> = emptyList())
+data class GroupCreateDto(val name: String)
+data class GroupMemberCreateDto(@SerializedName("user_id") val userId: Int)
+data class GroupInvitationDto(val id: Int, @SerializedName("group_id") val groupId: Int, @SerializedName("group_name") val groupName: String?, @SerializedName("inviter_id") val inviterId: Int, @SerializedName("inviter_display_name") val inviterDisplayName: String?, @SerializedName("target_id") val targetId: Int, val status: String, @SerializedName("created_at") val createdAt: String)
+data class GroupInvitationResponseDto(val status: String)
+data class NotificationDto(val id: Int, val type: String, val title: String, val body: String, @SerializedName("reference_type") val referenceType: String? = null, @SerializedName("reference_id") val referenceId: String? = null, @SerializedName("created_at") val createdAt: String)
+data class GroupActivityCreateDto(val title: String, val description: String? = null, @SerializedName("duration_minutes") val durationMinutes: Int = 60, @SerializedName("min_participants") val minParticipants: Int = 2, @SerializedName("participant_mode") val participantMode: String = "MINIMUM", @SerializedName("deadline_at") val deadlineAt: String, @SerializedName("time_rule") val timeRule: String, @SerializedName("fixed_start_at") val fixedStartAt: String? = null, @SerializedName("fixed_end_at") val fixedEndAt: String? = null, @SerializedName("window_start_at") val windowStartAt: String? = null, @SerializedName("window_end_at") val windowEndAt: String? = null)
 data class AvailabilityBlockDto(val date: String, @SerializedName("start_time") val startTime: String, @SerializedName("end_time") val endTime: String, val status: String)
 data class AvailabilityUpdateDto(val blocks: List<AvailabilityBlockDto>)
 data class AuthResponseDto(@SerializedName("access_token") val accessToken: String, @SerializedName("token_type") val tokenType: String, val user: UserDto)
@@ -35,12 +43,14 @@ data class MatchRequestDto(@SerializedName("receiver_id") val receiverId: Int, @
 data class MatchOptionDto(@SerializedName("start_at") val startAt: String, @SerializedName("end_at") val endAt: String, @SerializedName("match_type") val matchType: String, val score: Int)
 data class CalendarDraftDto(val title: String, val description: String?, val date: String?, @SerializedName("start_time") val startTime: String?, @SerializedName("end_time") val endTime: String?, val category: String, val status: String, @SerializedName("flexible_tail_minutes") val flexibleTailMinutes: Int, val confidence: Double, @SerializedName("missing_fields") val missingFields: List<String>)
 data class CalendarDraftResponseDto(val draft: CalendarDraftDto, val transcript: String?, val provider: String)
+data class SyncSnapshotDto(val events: List<Any> = emptyList(), @SerializedName("accepted_invites") val acceptedInvites: List<Any> = emptyList(), @SerializedName("calendar_cache") val calendarCache: List<Any> = emptyList(), @SerializedName("server_time") val serverTime: String? = null, @SerializedName("server_version") val serverVersion: String? = null)
 
 interface TempoApi {
     @POST("api/auth/login") suspend fun login(@Body body: LoginRequestDto): AuthResponseDto
     @POST("api/auth/register") suspend fun register(@Body body: RegisterRequestDto): AuthResponseDto
     @POST("api/auth/logout") suspend fun logout()
     @GET("api/auth/me") suspend fun me(): UserDto
+    @GET("api/sync/snapshot") suspend fun syncSnapshot(): SyncSnapshotDto
     @GET("api/auth/sessions") suspend fun sessions(): List<SessionDto>
     @DELETE("api/auth/sessions/{sessionKey}") suspend fun revokeSession(@retrofit2.http.Path("sessionKey") sessionKey: String)
     @PATCH("api/auth/me") suspend fun updateProfile(@Body body: ProfileUpdateRequestDto): UserDto
@@ -52,9 +62,26 @@ interface TempoApi {
     @DELETE("api/friends/{friendshipId}") suspend fun deleteFriend(@retrofit2.http.Path("friendshipId") id: Int)
     @GET("api/friends/{friendId}/availability") suspend fun friendAvailability(@retrofit2.http.Path("friendId") id: Int, @retrofit2.http.Query("date") date: String): List<AvailabilityBlockDto>
     @retrofit2.http.PUT("api/friends/availability") suspend fun updateAvailability(@Body body: AvailabilityUpdateDto)
+    @GET("api/groups") suspend fun groups(): List<GroupDto>
+    @POST("api/groups") suspend fun createGroup(@Body body: GroupCreateDto): GroupDto
+    @PATCH("api/groups/{groupId}") suspend fun updateGroup(@retrofit2.http.Path("groupId") id: Int, @Body body: GroupCreateDto): GroupDto
+    @POST("api/groups/{groupId}/members") suspend fun addGroupMember(@retrofit2.http.Path("groupId") id: Int, @Body body: GroupMemberCreateDto): GroupInvitationDto
+    @GET("api/groups/invitations") suspend fun groupInvitations(): List<GroupInvitationDto>
+    @PATCH("api/groups/invitations/{invitationId}") suspend fun respondGroupInvitation(@retrofit2.http.Path("invitationId") id: Int, @Body body: GroupInvitationResponseDto): GroupInvitationDto
+    @GET("api/notifications") suspend fun notifications(): List<NotificationDto>
+    @POST("api/notifications/{notificationId}/read") suspend fun markNotificationRead(@retrofit2.http.Path("notificationId") id: Int)
+    @DELETE("api/groups/{groupId}/members/{memberId}") suspend fun removeGroupMember(@retrofit2.http.Path("groupId") groupId: Int, @retrofit2.http.Path("memberId") memberId: Int)
+    @GET("api/groups/{groupId}/activities") suspend fun groupActivities(@retrofit2.http.Path("groupId") id: Int): List<GroupActivityDto>
+    @POST("api/groups/{groupId}/activities") suspend fun createGroupActivity(@retrofit2.http.Path("groupId") id: Int, @Body body: GroupActivityCreateDto): GroupActivityDto
+    @POST("api/groups/activities/{activityId}/join") suspend fun joinGroupActivity(@retrofit2.http.Path("activityId") id: Int): GroupActivityDto
+    @DELETE("api/groups/activities/{activityId}/join") suspend fun leaveGroupActivity(@retrofit2.http.Path("activityId") id: Int): GroupActivityDto
+    @PATCH("api/groups/activities/{activityId}/response") suspend fun respondGroupActivity(@retrofit2.http.Path("activityId") id: Int, @Body body: FriendResponseDto): GroupActivityDto
+    @POST("api/groups/activities/{activityId}/recalculate") suspend fun recalculateGroupActivity(@retrofit2.http.Path("activityId") id: Int): GroupActivityDto
+    @POST("api/groups/activities/{activityId}/cancel") suspend fun cancelGroupActivity(@retrofit2.http.Path("activityId") id: Int): GroupActivityDto
     @GET("api/invites") suspend fun invites(): List<InviteDto>
     @POST("api/invites") suspend fun createInvite(@Body body: InviteCreateDto): InviteDto
     @PATCH("api/invites/{inviteId}") suspend fun respondInvite(@retrofit2.http.Path("inviteId") id: Int, @Body body: FriendResponseDto): InviteDto
+    @DELETE("api/invites/{inviteId}") suspend fun deleteInvite(@retrofit2.http.Path("inviteId") id: Int)
     @POST("api/invites/match") suspend fun match(@Body body: MatchRequestDto): List<MatchOptionDto>
     @Multipart
     @POST("api/ai/calendar/parse-audio")

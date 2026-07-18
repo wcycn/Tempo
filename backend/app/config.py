@@ -5,6 +5,9 @@ class Settings(BaseSettings):
     app_env: str = "development"
     database_url: str = "sqlite:///./calendar.db"
     session_ttl_days: int = 30
+    auth_rate_limit_attempts: int = 8
+    auth_rate_limit_window_seconds: int = 900
+    auth_rate_limit_block_seconds: int = 900
     allowed_origins: str = "http://localhost:3000,http://localhost:5173"
     zhipu_api_key: str = ""
     zhipu_asr_model: str = "glm-asr-2512"
@@ -14,6 +17,8 @@ class Settings(BaseSettings):
     ai_audio_max_seconds: int = 30
     ai_access_code_hash: str = ""
     ai_access_secret: str = ""
+    log_level: str = "INFO"
+    backup_dir: str = "./backups"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

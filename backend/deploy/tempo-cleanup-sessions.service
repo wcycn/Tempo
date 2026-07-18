@@ -1,0 +1,8 @@
+[Unit]
+Description=Tempo expired session cleanup
+
+[Service]
+Type=oneshot
+User=tempo
+WorkingDirectory=/srv/tempo/app
+ExecStart=/srv/tempo/venv/bin/python3 scripts/cleanup_sessions.py

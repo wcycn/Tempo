@@ -4,7 +4,7 @@ import hashlib
 import secrets
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -13,8 +13,33 @@ from ..config import settings
 from ..database import get_db
 from ..dependencies import current_user
 from ..models import SessionToken, User
-from ..schemas import AuthResponse, LoginRequest, ProfileUpdateRequest, RegisterRequest, SessionPublic, UserPublic
+from ..schemas import (AccountDeleteRequest, AuthResponse, LoginRequest, PasswordChangeRequest,
+                       ProfileUpdateRequest, RegisterRequest, SessionPublic, UserPublic)
 from ..security import hash_password, new_session_token, verify_password
+
+
+_login_attempts: dict[str, list[datetime]] = {}
+
+
+def _rate_limit_key(request: Request, account: str) -> str:
+    host = request.client.host if request.client else "unknown"
+    return f"{host}:{account.strip().lower()}"
+
+
+def _check_login_rate_limit(request: Request, account: str) -> str:
+    now = datetime.utcnow()
+    key = _rate_limit_key(request, account)
+    recent = [item for item in _login_attempts.get(key, [])
+              if (now - item).total_seconds() < settings.auth_rate_limit_window_seconds]
+    _login_attempts[key] = recent
+    if len(recent) >= settings.auth_rate_limit_attempts:
+        raise HTTPException(status_code=429, detail="登录尝试过于频繁，请稍后再试")
+    recent.append(now)
+    return key
+
+
+def _clear_login_rate_limit(key: str) -> None:
+    _login_attempts.pop(key, None)
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -38,10 +63,12 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/login", response_model=AuthResponse)
-def login(payload: LoginRequest, db: Session = Depends(get_db)):
+def login(request: Request, payload: LoginRequest, db: Session = Depends(get_db)):
+    rate_key = _check_login_rate_limit(request, payload.account)
     user = db.scalar(select(User).where(or_(User.username == payload.account, User.email == payload.account.lower())))
     if not user or not verify_password(payload.password, user.password_hash):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="账号或密码错误")
+    _clear_login_rate_limit(rate_key)
     return _issue_token(user, db)
 
 
@@ -63,6 +90,25 @@ def update_profile(payload: ProfileUpdateRequest, user: User = Depends(current_u
     db.commit()
     db.refresh(user)
     return user
+
+
+@router.post("/password", status_code=204)
+def change_password(payload: PasswordChangeRequest, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    if not verify_password(payload.current_password, user.password_hash):
+        raise HTTPException(status_code=400, detail="当前密码错误")
+    if verify_password(payload.new_password, user.password_hash):
+        raise HTTPException(status_code=400, detail="新密码不能与旧密码相同")
+    user.password_hash = hash_password(payload.new_password)
+    db.query(SessionToken).where(SessionToken.user_id == user.id).delete(synchronize_session=False)
+    db.commit()
+
+
+@router.post("/delete-account", status_code=204)
+def delete_account(payload: AccountDeleteRequest, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    if not verify_password(payload.password, user.password_hash):
+        raise HTTPException(status_code=400, detail="密码错误，无法注销账号")
+    db.delete(user)
+    db.commit()
 
 
 @router.get("/sessions", response_model=list[SessionPublic])

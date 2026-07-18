@@ -5,6 +5,10 @@ plugins {
     id("com.google.devtools.ksp")
 }
 
+val tempoApiBaseUrl = providers.gradleProperty("TEMPO_API_BASE_URL")
+    .orElse("http://1.95.175.42:3001/")
+    .get()
+
 android { namespace = "com.hutong.calendar"; compileSdk = 35
     buildFeatures { buildConfig = true }
     defaultConfig {
@@ -13,11 +17,11 @@ android { namespace = "com.hutong.calendar"; compileSdk = 35
     buildTypes {
         debug {
             // Android 内测直接访问公网服务器；正式环境应替换为 HTTPS 域名。
-            buildConfigField("String", "API_BASE_URL", "\"http://1.95.175.42:3001/\"")
+            buildConfigField("String", "API_BASE_URL", "\"$tempoApiBaseUrl\"")
         }
         release {
             // 公网部署：开放云安全组后使用；正式发布应替换为 HTTPS 域名。
-            buildConfigField("String", "API_BASE_URL", "\"http://1.95.175.42:3001/\"")
+            buildConfigField("String", "API_BASE_URL", "\"$tempoApiBaseUrl\"")
         }
     }
     // Java 与 Kotlin 必须使用同一个 JVM 编译目标，否则 Gradle 会在编译阶段终止。

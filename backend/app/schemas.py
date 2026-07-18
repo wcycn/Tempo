@@ -25,6 +25,15 @@ class RegisterRequest(BaseModel):
     display_name: str = Field(min_length=1, max_length=80)
 
 
+class PasswordChangeRequest(BaseModel):
+    current_password: str = Field(min_length=1, max_length=128)
+    new_password: str = Field(min_length=8, max_length=128)
+
+
+class AccountDeleteRequest(BaseModel):
+    password: str = Field(min_length=1, max_length=128)
+
+
 class ProfileUpdateRequest(BaseModel):
     display_name: Optional[str] = Field(default=None, min_length=1, max_length=80)
     phone: Optional[str] = Field(default=None, max_length=30)
@@ -60,6 +69,17 @@ class FriendResponse(BaseModel):
     status: str = Field(pattern=r"^(ACCEPTED|DECLINED)$")
 
 
+class NotificationPublic(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    type: str
+    title: str
+    body: str
+    reference_type: Optional[str] = None
+    reference_id: Optional[str] = None
+    created_at: datetime
+
+
 class GroupCreate(BaseModel):
     name: str = Field(min_length=1, max_length=100)
 
@@ -68,12 +88,76 @@ class GroupMemberCreate(BaseModel):
     user_id: int
 
 
+class GroupInvitationPublic(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    group_id: int
+    group_name: str
+    inviter_id: int
+    inviter_display_name: str
+    target_id: int
+    status: str
+    created_at: datetime
+
+
+class GroupInvitationResponse(BaseModel):
+    status: str = Field(pattern=r"^(ACCEPTED|DECLINED)$")
+
+
 class GroupPublic(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int
     owner_id: int
     name: str
     members: list[FriendUserPublic] = []
+
+
+class GroupActivityCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=160)
+    description: Optional[str] = None
+    duration_minutes: int = Field(default=60, ge=15, le=1440)
+    min_participants: int = Field(default=2, ge=2, le=100)
+    participant_mode: str = Field(default="MINIMUM", pattern=r"^(MINIMUM|EXACT)$")
+    deadline_at: datetime
+    time_rule: str = Field(pattern=r"^(FIXED|EARLIEST|PEAK)$")
+    fixed_start_at: Optional[datetime] = None
+    fixed_end_at: Optional[datetime] = None
+    window_start_at: Optional[datetime] = None
+    window_end_at: Optional[datetime] = None
+
+
+class GroupActivityPublic(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    activity_code: str
+    group_id: int
+    creator_id: int
+    creator_display_name: str = ""
+    title: str
+    description: Optional[str] = None
+    duration_minutes: int
+    min_participants: int
+    participant_mode: str
+    deadline_at: datetime
+    time_rule: str
+    fixed_start_at: Optional[datetime] = None
+    fixed_end_at: Optional[datetime] = None
+    window_start_at: Optional[datetime] = None
+    window_end_at: Optional[datetime] = None
+    status: str
+    proposed_start_at: Optional[datetime] = None
+    proposed_end_at: Optional[datetime] = None
+    round: int
+    participants: list[FriendUserPublic] = []
+    pending_confirmation_ids: list[int] = []
+    confirmed_count: int = 0
+    pending_count: int = 0
+    declined_count: int = 0
+    confirmed_participant_ids: list[int] = []
+
+
+class GroupActivityResponse(BaseModel):
+    status: str = Field(pattern=r"^(CONFIRMED|DECLINED)$")
 
 
 class AvailabilityBlockInput(BaseModel):
@@ -181,3 +265,4 @@ class SyncResponse(BaseModel):
     accepted_invites: list[InvitePublic]
     calendar_cache: list[dict]
     server_time: datetime
+    server_version: str

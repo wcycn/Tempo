@@ -46,5 +46,12 @@ object CategoryStore {
         return result
     }
 
+    fun reorder(context: Context, ordered: List<CategoryOption>, ownerId: String = localOwnerId(context)): List<CategoryOption> {
+        context.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
+            .putString("$KEY-$ownerId", ordered.joinToString(ITEM_SEPARATOR) { "${it.name}$FIELD_SEPARATOR${it.colorHex}" })
+            .apply()
+        return ordered
+    }
+
     private fun localOwnerId(context: Context): String = TokenStore(context).cachedUser()?.id ?: "guest"
 }

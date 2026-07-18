@@ -55,6 +55,9 @@ interface OfflineCalendarDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun saveEvent(item: CachedEvent)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun saveEvents(items: List<CachedEvent>)
+
     @Query("DELETE FROM cached_events WHERE id = :id AND ownerId = :ownerId")
     suspend fun deleteEvent(id: String, ownerId: String)
 

@@ -1,0 +1,22 @@
+[Unit]
+Description=Tempo Calendar FastAPI Backend
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=tempo
+Group=tempo
+WorkingDirectory=/srv/tempo/app
+EnvironmentFile=/srv/tempo/app/.env
+ExecStart=/srv/tempo/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 3001
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/srv/tempo/app /srv/tempo/backups
+
+[Install]
+WantedBy=multi-user.target

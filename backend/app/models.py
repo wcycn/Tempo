@@ -134,3 +134,54 @@ class GroupMember(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     role: Mapped[str] = mapped_column(String(16), default="MEMBER")
     joined_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class GroupInvitation(Base):
+    __tablename__ = "group_invitations"
+    __table_args__ = (UniqueConstraint("group_id", "target_id", name="uq_group_invitation_target"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    group_id: Mapped[int] = mapped_column(ForeignKey("groups.id", ondelete="CASCADE"), index=True)
+    inviter_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    target_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    status: Mapped[str] = mapped_column(String(16), default="PENDING", index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    responded_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
+class GroupActivity(Base):
+    __tablename__ = "group_activities"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    activity_code: Mapped[str] = mapped_column(String(8), unique=True, index=True)
+    group_id: Mapped[int] = mapped_column(ForeignKey("groups.id", ondelete="CASCADE"), index=True)
+    creator_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    title: Mapped[str] = mapped_column(String(160))
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    duration_minutes: Mapped[int] = mapped_column(Integer, default=60)
+    min_participants: Mapped[int] = mapped_column(Integer, default=2)
+    participant_mode: Mapped[str] = mapped_column(String(16), default="MINIMUM")
+    deadline_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+    time_rule: Mapped[str] = mapped_column(String(16), default="EARLIEST")
+    fixed_start_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    fixed_end_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    window_start_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    window_end_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    status: Mapped[str] = mapped_column(String(24), default="OPEN", index=True)
+    proposed_start_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    proposed_end_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    round: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class GroupActivityParticipant(Base):
+    __tablename__ = "group_activity_participants"
+    __table_args__ = (UniqueConstraint("activity_id", "user_id", name="uq_group_activity_participant"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    activity_id: Mapped[int] = mapped_column(ForeignKey("group_activities.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    status: Mapped[str] = mapped_column(String(24), default="JOINED")
+    joined_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    responded_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)

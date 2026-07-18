@@ -140,3 +140,17 @@ def respond(invite_id: int, payload: InviteResponse, user: User = Depends(curren
             conflict.status = "DECLINED"
     db.commit(); db.refresh(invite)
     return _invite_payload(invite, db)
+
+
+@router.delete("/{invite_id}", status_code=204)
+def delete_invite(invite_id: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    invite = db.scalar(select(Invite).where(
+        Invite.id == invite_id,
+        or_(Invite.receiver_id == user.id, Invite.sender_id == user.id)
+    ))
+    if not invite:
+        raise HTTPException(404, "邀约不存在")
+    if invite.status in {"PENDING", "ACCEPTED"}:
+        raise HTTPException(409, "待应答或已确认邀约不能删除")
+    db.delete(invite)
+    db.commit()

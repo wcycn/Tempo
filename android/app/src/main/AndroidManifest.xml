@@ -2,8 +2,8 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.READ_CALENDAR" />
-    <!-- 内测阶段暂时访问服务器 HTTP；正式环境切换 HTTPS 后删除此属性。 -->
-    <application android:usesCleartextTraffic="true" android:icon="@drawable/logo" android:roundIcon="@drawable/logo" android:theme="@style/Theme.HutongCalendar" android:label="Tempo" android:allowBackup="true" android:supportsRtl="true">
+    <!-- Release 默认禁止明文网络；debug 变体通过 src/debug/AndroidManifest.xml 临时允许本机内测 HTTP。 -->
+    <application android:usesCleartextTraffic="false" android:icon="@drawable/logo" android:roundIcon="@drawable/logo" android:theme="@style/Theme.HutongCalendar" android:label="Tempo" android:allowBackup="false" android:supportsRtl="true">
         <activity android:name=".MainActivity" android:screenOrientation="portrait" android:exported="true">
             <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
         </activity>
