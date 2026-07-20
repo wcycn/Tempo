@@ -1,5 +1,5 @@
 from datetime import date as date_type, datetime, time, timedelta
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -21,7 +21,7 @@ def _range_datetime(date_value: str, clock: str) -> datetime:
 
 @router.put("/availability", status_code=204)
 def replace_availability(payload: AvailabilityUpdate, user: User = Depends(current_user), db: Session = Depends(get_db)):
-    dates = {item.date for item in payload.blocks}
+    dates = {item.date for item in payload.blocks} | set(payload.dates)
     hard_ranges = []
     for item in payload.blocks:
         if item.status == "HARD":
@@ -29,18 +29,34 @@ def replace_availability(payload: AvailabilityUpdate, user: User = Depends(curre
     if hard_ranges:
         pending = db.scalars(select(Invite).where(
             Invite.status == "PENDING",
-            or_(Invite.receiver_id == user.id, Invite.sender_id == user.id)
+            Invite.receiver_id == user.id,
         )).all()
         for invite in pending:
             if any(invite.start_at < end and invite.end_at > start for start, end in hard_ranges):
-                invite.status = "DECLINED" if invite.receiver_id == user.id else "CANCELLED"
-    if dates:
+                # 只有接收方改红会隐式拒绝；发起方必须显式点击取消邀约。
+                invite.status = "DECLINED"
+    if payload.replace_all:
+        db.query(AvailabilityBlock).filter(AvailabilityBlock.user_id == user.id).delete(synchronize_session=False)
+    elif dates:
         db.query(AvailabilityBlock).filter(AvailabilityBlock.user_id == user.id, AvailabilityBlock.date.in_(dates)).delete(synchronize_session=False)
     for item in payload.blocks:
         if item.end_time <= item.start_time:
             raise HTTPException(400, "结束时间必须晚于开始时间")
         db.add(AvailabilityBlock(user_id=user.id, **item.model_dump()))
     db.commit()
+
+
+@router.get("/find", response_model=list[FriendUserPublic])
+@router.get("/search", response_model=list[FriendUserPublic])
+def search_users(q: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    query = q.strip()
+    if not query:
+        return []
+    statement = select(User).where(
+        User.id != user.id,
+        or_(User.username.ilike(f"%{query}%"), User.display_name.ilike(f"%{query}%"))
+    ).limit(20)
+    return db.scalars(statement).all()
 
 
 @router.get("/{friend_id}/availability", response_model=list[AvailabilityPublic])
@@ -54,18 +70,6 @@ def get_availability(friend_id: int, date: str, user: User = Depends(current_use
     if not relation:
         raise HTTPException(403, "只有已同意的好友可以查看时间状态")
     return db.scalars(select(AvailabilityBlock).where(AvailabilityBlock.user_id == friend_id, AvailabilityBlock.date == date).order_by(AvailabilityBlock.start_time)).all()
-
-
-@router.get("/search", response_model=list[FriendUserPublic])
-def search_users(q: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
-    query = q.strip()
-    if not query:
-        return []
-    statement = select(User).where(
-        User.id != user.id,
-        or_(User.username.ilike(f"%{query}%"), User.display_name.ilike(f"%{query}%"))
-    ).limit(20)
-    return db.scalars(statement).all()
 
 
 @router.get("", response_model=list[FriendshipPublic])
@@ -132,7 +136,14 @@ def respond(friendship_id: int, payload: FriendResponse, user: User = Depends(cu
 
 
 @router.delete("/{friendship_id}", status_code=204)
-def delete_friend(friendship_id: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
+def delete_friend(
+    friendship_id: int,
+    confirm: bool = Query(default=False),
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+):
+    if not confirm:
+        raise HTTPException(400, "删除好友前需要明确确认")
     row = db.scalar(select(Friendship).where(Friendship.id == friendship_id,
                                             or_(Friendship.user_id == user.id, Friendship.friend_id == user.id)))
     if not row:

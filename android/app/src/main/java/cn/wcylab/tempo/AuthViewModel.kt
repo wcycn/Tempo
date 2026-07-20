@@ -1,15 +1,20 @@
-package com.hutong.calendar
+package cn.wcylab.tempo
 
 import android.app.Application
+import java.net.ConnectException
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
+import javax.net.ssl.SSLHandshakeException
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.hutong.calendar.data.AuthSession
-import com.hutong.calendar.data.TempoApiFactory
-import com.hutong.calendar.data.TokenStore
-import com.hutong.calendar.data.UserProfile
+import cn.wcylab.tempo.data.AuthSession
+import cn.wcylab.tempo.data.TempoApiFactory
+import cn.wcylab.tempo.data.TokenStore
+import cn.wcylab.tempo.data.UserProfile
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import retrofit2.HttpException
 
@@ -33,18 +38,18 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun login(account: String, password: String) = runAuth {
-        api.login(com.hutong.calendar.data.LoginRequestDto(account, password))
+        api.login(cn.wcylab.tempo.data.LoginRequestDto(account, password))
     }
 
     fun register(username: String, email: String, password: String, displayName: String) = runAuth {
-        api.register(com.hutong.calendar.data.RegisterRequestDto(username, email, password, displayName))
+        api.register(cn.wcylab.tempo.data.RegisterRequestDto(username, email, password, displayName))
     }
 
     fun updateProfile(displayName: String, phone: String?, hobbies: String?, signature: String?) = viewModelScope.launch {
         val current = _state.value as? AuthState.LoggedIn ?: return@launch
         try {
             _message.value = null
-            val user = api.updateProfile(com.hutong.calendar.data.ProfileUpdateRequestDto(displayName.trim(), phone?.trim(), hobbies?.trim(), signature?.trim()))
+            val user = retryRequest { api.updateProfile(cn.wcylab.tempo.data.ProfileUpdateRequestDto(displayName.trim(), phone?.trim(), hobbies?.trim(), signature?.trim())) }
             val session = AuthSession(current.session.accessToken, user.toProfile())
             tokenStore.save(session)
             _state.value = AuthState.LoggedIn(session)
@@ -59,7 +64,7 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
     fun updateDisplayName(displayName: String) = updateProfile(displayName, null, null, null)
 
     fun logout() = viewModelScope.launch {
-        runCatching { if (tokenStore.get() != null) api.logout() }
+            runCatching { if (tokenStore.get() != null) retryRequest { api.logout() } }
         tokenStore.clear()
         _state.value = AuthState.LoggedOut
     }
@@ -67,7 +72,7 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
     private fun refreshUser() = viewModelScope.launch {
         val savedToken = tokenStore.get()
         try {
-            val user = api.me()
+            val user = retryRequest { api.me() }
             _state.value = AuthState.LoggedIn(AuthSession(savedToken.orEmpty(), user.toProfile()))
         } catch (error: Exception) {
             val cachedUser = tokenStore.cachedUser()
@@ -80,9 +85,10 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private fun runAuth(block: suspend () -> com.hutong.calendar.data.AuthResponseDto) = viewModelScope.launch {
+    private fun runAuth(block: suspend () -> cn.wcylab.tempo.data.AuthResponseDto) = viewModelScope.launch {
         _state.value = AuthState.Loading
         try {
+            // OkHttp 已会处理建连失败的安全重试，认证请求不再额外连续发送三次。
             val response = block()
             val session = AuthSession(response.accessToken, response.user.toProfile())
             tokenStore.save(session)
@@ -91,9 +97,20 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
             _state.value = AuthState.Error(userFacingError(error, "网络请求失败"))
         }
     }
+
+    private suspend fun <T> retryRequest(block: suspend () -> T): T {
+        var last: Exception? = null
+        repeat(3) { attempt ->
+            try { return block() } catch (error: Exception) {
+                last = error
+                if (attempt < 2) delay(300L * (attempt + 1))
+            }
+        }
+        throw last ?: IllegalStateException("request failed")
+    }
 }
 
-private fun com.hutong.calendar.data.UserDto.toProfile() = UserProfile(id.toString(), displayName, email = email, accountId = accountId.toString(), phone = phone, hobbies = hobbies, signature = signature, username = username)
+private fun cn.wcylab.tempo.data.UserDto.toProfile() = UserProfile(id.toString(), displayName, email = email, accountId = accountId.toString(), phone = phone, hobbies = hobbies, signature = signature, username = username)
 
 private fun userFacingError(error: Exception, fallback: String): String = when (error) {
     is HttpException -> when (error.code()) {
@@ -103,7 +120,11 @@ private fun userFacingError(error: Exception, fallback: String): String = when (
         in 500..599 -> "服务器暂时不可用，请稍后重试"
         else -> fallback
     }
-    else -> "网络不可用，请检查网络连接后重试"
+    is UnknownHostException -> "无法解析服务器地址，请检查手机网络或 DNS"
+    is SSLHandshakeException -> "服务器安全连接失败，请检查系统时间或证书"
+    is SocketTimeoutException -> "连接服务器超时，请稍后重试"
+    is ConnectException -> "无法连接服务器，请检查网络或服务器状态"
+    else -> transportError(error)
 }
 
 private fun profileFacingError(error: Exception): String = when (error) {
@@ -114,5 +135,21 @@ private fun profileFacingError(error: Exception): String = when (error) {
         in 500..599 -> "服务器保存资料失败，请稍后重试"
         else -> "资料保存失败（HTTP ${error.code()}）"
     }
-    else -> "网络不可用，请检查网络连接后重试"
+    is UnknownHostException -> "无法解析服务器地址，请检查手机网络或 DNS"
+    is SSLHandshakeException -> "服务器安全连接失败，请检查系统时间或证书"
+    is SocketTimeoutException -> "连接服务器超时，请稍后重试"
+    is ConnectException -> "无法连接服务器，请检查网络或服务器状态"
+    else -> transportError(error)
+}
+
+private fun transportError(error: Exception): String {
+    val detail = error.message
+        ?.replace(Regex("https?://\\S+"), "服务器")
+        ?.trim()
+        ?.takeIf { it.isNotBlank() }
+    return if (detail == null) {
+        "网络请求失败：${error.javaClass.simpleName}"
+    } else {
+        "网络请求失败：${error.javaClass.simpleName}（$detail）"
+    }
 }

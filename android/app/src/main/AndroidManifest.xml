@@ -3,7 +3,7 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.READ_CALENDAR" />
     <!-- Release 默认禁止明文网络；debug 变体通过 src/debug/AndroidManifest.xml 临时允许本机内测 HTTP。 -->
-    <application android:usesCleartextTraffic="false" android:icon="@drawable/logo" android:roundIcon="@drawable/logo" android:theme="@style/Theme.HutongCalendar" android:label="Tempo" android:allowBackup="false" android:supportsRtl="true">
+    <application android:usesCleartextTraffic="false" android:icon="@drawable/logo" android:roundIcon="@drawable/logo" android:theme="@style/Theme.Tempo" android:label="Tempo" android:allowBackup="false" android:supportsRtl="true">
         <activity android:name=".MainActivity" android:screenOrientation="portrait" android:exported="true">
             <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
         </activity>

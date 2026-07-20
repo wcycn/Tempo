@@ -5,6 +5,8 @@ import uuid
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.gzip import GZipMiddleware
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
 
 from .config import settings
@@ -14,9 +16,12 @@ from .routes import ai, auth, events, friends, groups, invites, notifications, s
 logging.basicConfig(level=getattr(logging, settings.log_level.upper(), logging.INFO), format="%(asctime)s %(levelname)s %(name)s %(message)s")
 logger = logging.getLogger("tempo.api")
 
-init_db()
+if settings.auto_create_db:
+    init_db()
 
-app = FastAPI(title="Tempo Calendar API", version="0.2.0")
+app = FastAPI(title="Tempo Calendar API", version=settings.app_version)
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.hosts or ["*"])
+app.add_middleware(GZipMiddleware, minimum_size=1024)
 app.add_middleware(CORSMiddleware, allow_origins=settings.origins, allow_credentials=True,
                    allow_methods=["*"], allow_headers=["*"])
 

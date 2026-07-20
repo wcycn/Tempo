@@ -1,4 +1,4 @@
-package com.hutong.calendar.data
+package cn.wcylab.tempo.data
 
 /**
  * Android UI 只依赖这个接口，后续可以替换成 Room + Retrofit 的真实实现。

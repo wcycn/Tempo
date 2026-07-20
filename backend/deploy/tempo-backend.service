@@ -12,11 +12,18 @@ EnvironmentFile=/srv/tempo/app/.env
 ExecStart=/srv/tempo/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 3001
 Restart=always
 RestartSec=5
+TimeoutStopSec=30
+UMask=0077
 NoNewPrivileges=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
 PrivateTmp=true
-ProtectSystem=full
+ProtectSystem=strict
 ProtectHome=true
 ReadWritePaths=/srv/tempo/app /srv/tempo/backups
+LimitNOFILE=65536
 
 [Install]
 WantedBy=multi-user.target

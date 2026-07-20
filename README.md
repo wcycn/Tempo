@@ -135,14 +135,7 @@ curl http://127.0.0.1:8765/api/health
 adb reverse tcp:8765 tcp:8765
 ```
 
-如果后端暂时无法开放公网端口，也可以使用 SSH 隧道进行 USB 测试：
-
-```bash
-ssh -N -L 8765:127.0.0.1:3001 zbh
-adb reverse tcp:8765 tcp:8765
-```
-
-当前 Debug 和 Release 版本都会直接访问公网服务器；SSH 隧道仅作为备用测试方式。
+当前 Debug 和 Release 版本均通过可配置的 Tempo API 地址联网；本地开发时可使用 `adb reverse`，正式内测使用 HTTPS 服务地址。
 
 模拟器访问宿主机时使用 `http://10.0.2.2:8765`；真实手机通常使用电脑局域网 IP，或使用上面的 `adb reverse`。
 
@@ -152,13 +145,15 @@ adb reverse tcp:8765 tcp:8765
 
 ### 4. Tempo 服务器部署
 
-当前开发服务器使用独立的 `/srv/tempo` 目录和 `tempo` 系统用户运行后端，服务配置见 [`backend/deploy/tempo-backend.service`](backend/deploy/tempo-backend.service)。服务器内部健康检查地址为：
+当前服务器使用独立的 `/srv/tempo` 目录和 `tempo` 系统用户运行后端，服务配置见 [`backend/deploy/tempo-backend.service`](backend/deploy/tempo-backend.service)，一键安装脚本见 [`backend/deploy/install_tempo.sh`](backend/deploy/install_tempo.sh)。服务内部只监听 `127.0.0.1:3001`，公网通过 Nginx + HTTPS 访问。内部健康检查地址为：
 
 ```text
 http://127.0.0.1:3001/api/health
 ```
 
-当前内测公网地址为 `http://1.95.175.42:3001`。长期使用应配置域名和 HTTPS，避免直接使用公网 IP + HTTP。
+当前生产 API 地址为 `https://api.wcylab.cn`，公网请求通过 Cloudflare Named Tunnel 转发到服务器内部的 `127.0.0.1:3001`。不要直接使用公网 IP + HTTP 访问 API。
+
+Tempo 数据已迁移到新 ECS，旧服务器上的 Tempo 服务、数据、配置和专用用户均已删除，项目不再依赖旧服务器。迁移后所有旧登录会话已失效，请重新登录；账号、日程、好友、邀约和群组数据已保留。
 
 ## 内测方式
 
@@ -261,7 +256,7 @@ adb install -r android/app/build/outputs/apk/debug/app-debug.apk
 - [X] Android Release 禁止明文网络和系统备份；仅 Debug 允许本机 HTTP 内测。
 - [X] 提供 Nginx HTTPS 反向代理模板；实际证书需要域名、DNS 和服务器管理权限。
 - [X] 提供生产备份、迁移、恢复和会话清理操作说明。
-- [ ] 实际申请域名、TLS 证书和配置公网安全组（需要开发者提供域名并操作证书/云平台）。
+- [X] 实际申请域名、TLS 证书和配置公网安全组；生产 API 已启用 `https://api.wcylab.cn`。
 - [ ] PostgreSQL 迁移（当前 SQLite 已满足内测；正式扩容前需要确定数据库资源和迁移窗口）。
 - [ ] FCM/WebSocket、外部日历导入和第三方推送（需要明确外部服务与产品策略）。
 
@@ -281,10 +276,10 @@ adb install -r android/app/build/outputs/apk/debug/app-debug.apk
 bash tools/check_secrets.sh
 ```
 
-Android 默认使用当前内测服务器地址。切换本机、局域网或 HTTPS 地址时，在 `android/gradle.properties` 或 Gradle 命令中传入：
+Android 默认使用生产 HTTPS 地址 `https://api.wcylab.cn/`。切换本机、局域网或其他测试地址时，在 `android/gradle.properties` 或 Gradle 命令中传入：
 
 ```bash
-./gradlew assembleDebug -PTEMPO_API_BASE_URL=http://127.0.0.1:8765/
+./gradlew assembleDebug -PTEMPO_API_BASE_URL=https://api.wcylab.cn/
 ```
 
 后端部署后可执行只读检查：
@@ -294,7 +289,7 @@ cd backend
 python3 scripts/smoke_check.py http://127.0.0.1:8765
 ```
 
-HTTPS 模板位于 [`backend/deploy/nginx-tempo.conf.example`](backend/deploy/nginx-tempo.conf.example)。它不能替代域名和证书申请；没有域名时只能继续使用 HTTP 或 SSH/局域网测试。
+HTTPS 模板位于 [`backend/deploy/nginx-tempo.conf.example`](backend/deploy/nginx-tempo.conf.example)。当前生产服务器已完成域名解析、Nginx 和 HTTPS 配置。
 
 ## 文档
 

@@ -817,3 +817,85 @@
 - 已完成：README 更新当前版本、下载说明和版本链接。
 - 待完成：开发者重新生成 APK，确认 GitHub Actions 通过后创建 `v0.4.0-beta` GitHub Release。
 - 待完成：邀请同学进行小范围内测并收集反馈。
+
+### N-083 · wcylab 域名部署模板
+
+- 状态：`done`
+- 已完成：新增 `backend/deploy/nginx-wcylab-tempo.conf.example`，将 `api.wcylab.cn` 反向代理到 `127.0.0.1:3001`。
+- 已明确：配置文件当前只进入项目，不会自动写入同学服务器，也不会修改现有 Nginx 服务。
+- 已明确：只有在域名审核完成、DNS 生效并获得 80/443 端口授权后，才执行 Nginx 启用和 Certbot 证书申请。
+- 已完成：域名审核、DNS 切换、HTTPS 证书申请和 `/api/health` 验证；Android HTTPS 版本待开发者重新构建。
+### N-084 · 后端生产化基础配置
+
+- 状态：`done`
+- 目标：在不依赖域名证书、第三方推送和 PostgreSQL 的前提下，把 FastAPI 后端整理为可部署、可维护的服务器版本。
+- 已完成：增加应用版本、可信 Host、GZip、安全生产配置和 `AUTO_CREATE_DB` 开关；生产环境由 Alembic 负责数据库结构，避免服务启动时自动改表。
+- 已完成：修复 Alembic 群组活动迁移的重复加列、重复索引问题，使全新 SQLite 数据库和已有数据库都可以幂等迁移。
+- 已完成：增强 systemd 服务隔离、文件权限、资源限制和停止策略；新增服务器安装脚本，创建受限 `tempo` 用户、虚拟环境、服务和定时维护任务。
+- 已完成：补充生产环境 `.env` 示例、部署顺序、备份和内部健康检查说明。
+- 已完成：新 Alibaba ECS 已完成 SSH 公钥登录配置，后端部署目录为 `/srv/tempo`；服务已由 systemd 管理并通过 Nginx + HTTPS 对外提供访问。
+- 下一步：使用 HTTPS 地址重新构建 Android 测试版，并进行真实手机联网回归。
+
+### N-085 · 新 ECS 运行环境与 HTTPS 反向代理
+
+- 状态：`done`
+- 已完成：新 ECS 安装 Python 3.11、FastAPI 生产依赖、Certbot、Nginx，并启用 Nginx 开机启动。
+- 已完成：`wcylab.cn` 权威 DNS 已切换至 Cloudflare，`api.wcylab.cn` 通过固定 Named Tunnel 连接新 ECS，不再依赖公网 A 记录直连。
+- 已完成：申请 Let’s Encrypt 证书，证书有效期至 2026-10-17，Certbot 已配置自动续期。
+- 已完成：Nginx 已将 HTTP 自动重定向到 HTTPS，`https://api.wcylab.cn/api/health` 返回生产环境健康状态。
+- 已完成：后端仍只监听 `127.0.0.1:3001`，公网只开放 Nginx 使用的 80/443，避免直接暴露 Uvicorn。
+- 下一步：Android 使用 `https://api.wcylab.cn/` 构建测试版，并进行真实手机联网回归。
+
+### N-091 · Cloudflare Named Tunnel 固定网络入口
+
+- 状态：`done`
+- 已完成：创建远程管理的 `tempo-api` Named Tunnel，并在新 ECS 上安装为开机自启的 `cloudflared.service`。
+- 已完成：将正式入口 `https://api.wcylab.cn` 映射到服务器内部 `http://127.0.0.1:3001`，后端仍不直接暴露公网端口。
+- 已完成：将测试入口 `api-test.wcylab.cn` 加入后端可信 Host，并完成 Wi-Fi、移动网络和数据库健康检查。
+- 已完成：Android Debug/Release 默认 API 地址恢复为固定的 `https://api.wcylab.cn/`，仍可通过 `TEMPO_API_BASE_URL` 覆盖。
+- 过渡安排：旧 Quick Tunnel 暂时保留供旧 APK 使用；新 APK 完成登录、好友、邀约和群组回归后再关闭临时服务。
+### N-086 · 群组接龙明确退出与活动编号
+
+- 状态：`done`
+- 已完成：开放接龙阶段增加“不参加”按钮，不参加状态由服务端记录为 `DECLINED`，不会继续进入匹配候选池。
+- 已完成：已退出成员可以再次点击“我有空 / 参与”恢复参与；进入 `MATCHING` 或确认阶段后仍不能修改参与状态。
+- 已确认：每个活动使用独立 8 位 `activity_code`，Android 卡片显示“活动编号”，与用户账号编号分离。
+- 下一步：重新构建 Android HTTPS 测试版，重点验证“不参加 → 重新参加”、最低人数和确定人数两种模式。
+
+### N-087 · Android 默认 API 地址切换到 HTTPS
+
+- 状态：`done`
+- 已完成：Android 默认 API 地址从旧服务器 `http://1.95.175.42:3001/` 切换为 `https://api.wcylab.cn/`。
+- 原因：旧 APK 使用旧服务器上的活动数据，新服务器活动编号不同，会导致群组操作返回 404。
+- 下一步：重新构建并安装 APK；如果使用旧 APK，必须通过 Gradle 参数显式传入新的 HTTPS 地址。
+
+### N-088 · Tempo 数据迁移到新 ECS
+
+- 状态：`done`
+- 已完成：对旧服务器 `/srv/tempo/app/calendar.db` 做 SQLite 在线一致性备份，并保留旧库迁移前备份。
+- 已完成：将 19 个账号、4 条日程、7 条邀约、5 条好友关系、3 个群组、3 个群组活动及参与记录导入新 ECS。
+- 已完成：执行 `0003`–`0005` 数据库迁移，为已有群组活动补齐 `activity_code`；当前活动编号为 `10000001`、`10000002`、`10000003`。
+- 已完成：清除迁移前登录会话，避免旧服务器 Token 继续使用；新 ECS HTTPS 健康检查通过。
+- 已完成：旧共享服务器上的 Tempo 数据、配置、systemd 服务、定时任务、临时文件和专用用户均已归档后删除，3001 端口已释放，未影响其他服务；Tempo 与旧服务器已彻底解除关系。
+- 注意：所有设备需要重新构建/安装 HTTPS 版本并重新登录；旧 APK 不应继续使用。
+
+### N-089 · 新 ECS API 链路与双人邀约闭环核验
+
+- 状态：`done`
+- 已修复：好友搜索同时兼容 `/api/friends/find` 和旧路径 `/api/friends/search`，并调整路由顺序，避免被动态用户路径截获。
+- 已修复：双人时间扫描同时提供 GET `/api/invites/options` 和旧 POST 别名；Android 已切换到 GET 查询，避免部分设备在 POST/TLS 连接复用异常时出现 `Connection reset`。
+- 已修正：针对荣耀真机登录时请求未到达服务器却出现 `Connection reset` 的现象，移除强制 `COMPATIBLE_TLS/HTTP1.1/Connection: close` 配置，恢复 OkHttp 系统默认 TLS/HTTP 协商；好友、群组、邀约和登录操作保留可取消的有限重试。
+- 已验证：新 ECS 公网健康检查返回 200；在真实生产数据库上，好友列表、群组列表、邀约列表、好友搜索、候选扫描均通过鉴权和响应序列化测试；候选扫描返回完整开始/结束时间段。
+- 已验证：使用临时测试数据完成“创建邀约（201）→接收方同意（200）”闭环，测试邀约已回滚，线上数据未增加。
+- 已完成：本地后端 Python 编译检查和 Git 空白检查通过。
+- 注意：Android 源码修改必须重新构建并安装新 APK；旧 APK 仍会调用旧接口，不能用旧 APK 判断本次修复是否生效。
+- 下一步：开发者重新构建 HTTPS APK，在手机上重新登录后依次测试好友搜索、好友列表、群组列表、候选扫描、发送邀约和接收同意；如果失败，提供新 APK 的 Logcat 中第一条 `GET/POST /api/...` 请求及对应时间。
+
+### N-090 · Tempo 品牌与 Android 包名统一
+
+- 状态：`done`
+- 已完成：项目展示名称、Android 工程名、主题名、Compose 根组件、Web 原型和本地后端标识统一使用 `Tempo`。
+- 已完成：Android namespace、applicationId、Kotlin package 和源码目录由旧标识统一迁移为 `cn.wcylab.tempo`。
+- 已完成：清除仓库源码和文档中的旧品牌及旧包名引用。
+- 兼容性说明：Android applicationId 发生变化，系统会将新版识别为新的应用；服务器账号、好友、群组和邀约数据不受影响，旧测试包中的本地 Room 日程不会自动迁移。
+- 待验证：开发者在 Android Studio 中重新同步工程并构建安装，确认启动入口、Room 初始化、登录和联网功能正常。

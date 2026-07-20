@@ -3,7 +3,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     app_env: str = "development"
+    app_version: str = "0.4.0"
     database_url: str = "sqlite:///./calendar.db"
+    auto_create_db: bool = True
     session_ttl_days: int = 30
     auth_rate_limit_attempts: int = 8
     auth_rate_limit_window_seconds: int = 900
@@ -19,12 +21,17 @@ class Settings(BaseSettings):
     ai_access_secret: str = ""
     log_level: str = "INFO"
     backup_dir: str = "./backups"
+    trusted_hosts: str = "localhost,127.0.0.1"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     @property
     def origins(self) -> list[str]:
         return [item.strip() for item in self.allowed_origins.split(",") if item.strip()]
+
+    @property
+    def hosts(self) -> list[str]:
+        return [item.strip() for item in self.trusted_hosts.split(",") if item.strip()]
 
 
 settings = Settings()

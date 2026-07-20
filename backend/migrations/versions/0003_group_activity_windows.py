@@ -13,10 +13,18 @@ depends_on = None
 
 
 def upgrade():
-    op.add_column("group_activities", sa.Column("window_start_at", sa.DateTime(), nullable=True))
-    op.add_column("group_activities", sa.Column("window_end_at", sa.DateTime(), nullable=True))
+    inspector = sa.inspect(op.get_bind())
+    columns = {column["name"] for column in inspector.get_columns("group_activities")}
+    if "window_start_at" not in columns:
+        op.add_column("group_activities", sa.Column("window_start_at", sa.DateTime(), nullable=True))
+    if "window_end_at" not in columns:
+        op.add_column("group_activities", sa.Column("window_end_at", sa.DateTime(), nullable=True))
 
 
 def downgrade():
-    op.drop_column("group_activities", "window_end_at")
-    op.drop_column("group_activities", "window_start_at")
+    inspector = sa.inspect(op.get_bind())
+    columns = {column["name"] for column in inspector.get_columns("group_activities")}
+    if "window_end_at" in columns:
+        op.drop_column("group_activities", "window_end_at")
+    if "window_start_at" in columns:
+        op.drop_column("group_activities", "window_start_at")

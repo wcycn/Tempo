@@ -6,13 +6,13 @@ plugins {
 }
 
 val tempoApiBaseUrl = providers.gradleProperty("TEMPO_API_BASE_URL")
-    .orElse("http://1.95.175.42:3001/")
+    .orElse("https://api.wcylab.cn/")
     .get()
 
-android { namespace = "com.hutong.calendar"; compileSdk = 35
+android { namespace = "cn.wcylab.tempo"; compileSdk = 35
     buildFeatures { buildConfig = true }
     defaultConfig {
-        applicationId = "com.hutong.calendar"; minSdk = 26; targetSdk = 35; versionCode = 5; versionName = "0.4.0"
+        applicationId = "cn.wcylab.tempo"; minSdk = 26; targetSdk = 35; versionCode = 10; versionName = "0.4.5"
     }
     buildTypes {
         debug {
@@ -50,6 +50,9 @@ dependencies {
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
     implementation("com.squareup.retrofit2:retrofit:2.11.0")
     implementation("com.squareup.retrofit2:converter-gson:2.11.0")
+    // 固定网络栈版本，避免设备或其他依赖把 Retrofit 降级到旧版 OkHttp，
+    // 导致部分荣耀设备在 HTTPS/网络切换时出现 Connection reset。
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("cn.6tail:lunar:1.7.7")
     debugImplementation("androidx.compose.ui:ui-tooling")
 }

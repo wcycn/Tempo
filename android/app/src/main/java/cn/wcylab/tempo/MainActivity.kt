@@ -1,4 +1,4 @@
-package com.hutong.calendar
+package cn.wcylab.tempo
 
 import android.Manifest
 import android.os.Bundle
@@ -56,23 +56,23 @@ import androidx.activity.compose.BackHandler
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import com.hutong.calendar.data.CalendarEvent
-import com.hutong.calendar.data.CategoryOption
-import com.hutong.calendar.data.CategoryStore
-import com.hutong.calendar.data.EventStatus
-import com.hutong.calendar.data.FriendSummary
-import com.hutong.calendar.data.GroupSummary
-import com.hutong.calendar.data.GroupActivityCreateDto
-import com.hutong.calendar.data.GroupActivityDto
-import com.hutong.calendar.data.GroupInvitationDto
-import com.hutong.calendar.data.PendingInvite
-import com.hutong.calendar.data.AcceptedInvite
-import com.hutong.calendar.data.ThemeChoice
-import com.hutong.calendar.data.ThemePreference
-import com.hutong.calendar.data.UserProfile
-import com.hutong.calendar.data.CalendarImportParser
-import com.hutong.calendar.data.ImportCandidate
-import com.hutong.calendar.data.ImportParseResult
+import cn.wcylab.tempo.data.CalendarEvent
+import cn.wcylab.tempo.data.CategoryOption
+import cn.wcylab.tempo.data.CategoryStore
+import cn.wcylab.tempo.data.EventStatus
+import cn.wcylab.tempo.data.FriendSummary
+import cn.wcylab.tempo.data.GroupSummary
+import cn.wcylab.tempo.data.GroupActivityCreateDto
+import cn.wcylab.tempo.data.GroupActivityDto
+import cn.wcylab.tempo.data.GroupInvitationDto
+import cn.wcylab.tempo.data.PendingInvite
+import cn.wcylab.tempo.data.AcceptedInvite
+import cn.wcylab.tempo.data.ThemeChoice
+import cn.wcylab.tempo.data.ThemePreference
+import cn.wcylab.tempo.data.UserProfile
+import cn.wcylab.tempo.data.CalendarImportParser
+import cn.wcylab.tempo.data.ImportCandidate
+import cn.wcylab.tempo.data.ImportParseResult
 import java.util.UUID
 import android.graphics.Color as AndroidColor
 import android.graphics.Paint as AndroidPaint
@@ -98,6 +98,7 @@ val ThemeBorder get() = currentPalette.border
 val Red = Color(0xFFF05B50)
 val Green = Color(0xFF57C58A)
 val Yellow = Color(0xFFEAB94E)
+val PendingInviteGray = Color(0xFF59616B)
 val Blue get() = currentPalette.accent
 
 enum class CalendarMode { MONTH, WEEK, DAY, AGENDA }
@@ -105,7 +106,7 @@ enum class CalendarMode { MONTH, WEEK, DAY, AGENDA }
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { HutongApp() }
+        setContent { TempoApp() }
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M && checkSelfPermission(Manifest.permission.READ_CALENDAR) != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(arrayOf(Manifest.permission.READ_CALENDAR), 1001)
         }
@@ -113,7 +114,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun HutongApp() {
+fun TempoApp() {
     val context = LocalContext.current
     val authViewModel: AuthViewModel = viewModel()
     val invitesViewModel: InvitesViewModel = viewModel()
@@ -178,24 +179,28 @@ fun HutongApp() {
     val currentUserId = (authState as? AuthState.LoggedIn)?.session?.user?.id?.toIntOrNull()
     val friends = friendshipDtos.filter { it.status == "ACCEPTED" }.map { FriendSummary(it.friend.id.toString(), it.friend.displayName, "可邀约") }
     val pendingInvites = inviteItems.filter { it.status == "PENDING" }.map { item ->
+        val isSender = item.senderId == currentUserId
         PendingInvite(
             id = item.id.toString(),
             title = item.title,
             time = "${item.startAt.replace('T', ' ')} — ${item.endAt.substringAfter('T')}",
-            inviter = item.senderDisplayName ?: if (item.senderId == currentUserId) "我" else friends.firstOrNull { it.id == item.senderId.toString() }?.name ?: "好友",
-            receiver = item.receiverDisplayName ?: if (item.receiverId == currentUserId) "我" else friends.firstOrNull { it.id == item.receiverId.toString() }?.name ?: "好友",
-            description = item.description
+            inviter = if (isSender) "我" else item.senderDisplayName ?: friends.firstOrNull { it.id == item.senderId.toString() }?.name ?: "好友",
+            receiver = if (item.receiverId == currentUserId) "我" else item.receiverDisplayName ?: friends.firstOrNull { it.id == item.receiverId.toString() }?.name ?: "好友",
+            description = item.description,
+            isSender = isSender,
         )
     }
     val handledInvites = inviteItems.filter { it.status in setOf("DECLINED", "CANCELLED", "EXPIRED") }.map { item ->
+        val isSender = item.senderId == currentUserId
         PendingInvite(
             id = item.id.toString(),
             title = item.title,
             time = "${item.startAt.replace('T', ' ')} — ${item.endAt.substringAfter('T')}",
-            inviter = item.senderDisplayName ?: if (item.senderId == currentUserId) "我" else friends.firstOrNull { it.id == item.senderId.toString() }?.name ?: "好友",
-            receiver = item.receiverDisplayName ?: if (item.receiverId == currentUserId) "我" else friends.firstOrNull { it.id == item.receiverId.toString() }?.name ?: "好友",
+            inviter = if (isSender) "我" else item.senderDisplayName ?: friends.firstOrNull { it.id == item.senderId.toString() }?.name ?: "好友",
+            receiver = if (item.receiverId == currentUserId) "我" else item.receiverDisplayName ?: friends.firstOrNull { it.id == item.receiverId.toString() }?.name ?: "好友",
             description = item.description,
-            status = item.status
+            status = item.status,
+            isSender = isSender,
         )
     }
     val acceptedInvites = inviteItems.filter { it.status == "ACCEPTED" }.map { item ->
@@ -204,6 +209,18 @@ fun HutongApp() {
         val counterpartName = counterpart ?: friends.firstOrNull { it.id == counterpartId.toString() }?.name ?: "好友"
         AcceptedInvite(item.id.toString(), item.title, "${item.startAt.replace('T', ' ')} — ${item.endAt.substringAfter('T')}", counterpartName, item.startAt, item.endAt, item.description)
     }.sortedBy { it.startAt }
+    // 待应答邀约只作为周表格的“暂定时间”覆盖层：双方都能看到，但不把接收方真正锁定。
+    val pendingInviteWeekEvents = inviteItems.filter { it.status == "PENDING" }.map { item ->
+        CalendarEvent(
+            id = "invite-${item.id}",
+            ownerId = currentUserId?.toString() ?: "guest",
+            title = item.title,
+            start = item.startAt.replace('T', ' '),
+            end = item.endAt.replace('T', ' '),
+            category = "邀约",
+            status = EventStatus.PENDING,
+        )
+    }
     val groups = contentViewModel.groups
     val remoteGroups by groupViewModel.groups.collectAsState()
     val groupActivities by groupViewModel.activities.collectAsState()
@@ -217,14 +234,23 @@ fun HutongApp() {
     val syncNotice by calendarViewModel.syncNotice.collectAsState()
     LaunchedEffect(syncNotice) { syncNotice?.let { Toast.makeText(context, it, Toast.LENGTH_LONG).show(); calendarViewModel.clearSyncNotice() } }
     var page by remember { mutableStateOf("日程") }
-    LaunchedEffect(accountScope) { calendarViewModel.refresh() }
-    LaunchedEffect(accountScope, page) {
-        if (page == "找时间") {
+    // 登录完成后统一预加载远端关系数据，避免只依赖底部页面切换触发刷新，
+    // 导致群组页面首次进入时没有发出 /api/groups 请求。
+    LaunchedEffect(authState) {
+        if (authState is AuthState.LoggedIn) {
             friendsViewModel.refresh()
             invitesViewModel.refresh()
-        } else if (page == "群组") {
             groupViewModel.refresh()
-        } else if (page == "日程") {
+        }
+    }
+    LaunchedEffect(accountScope) { calendarViewModel.refresh() }
+    LaunchedEffect(authState, page) {
+        if (authState is AuthState.LoggedIn && page == "找时间") {
+            friendsViewModel.refresh()
+            invitesViewModel.refresh()
+        } else if (authState is AuthState.LoggedIn && page == "群组") {
+            groupViewModel.refresh()
+        } else if (authState is AuthState.LoggedIn && page == "日程") {
             // 日程页只做后台邀约同步，不阻塞本地日历首屏显示。
             friendsViewModel.refresh()
             invitesViewModel.refresh()
@@ -314,7 +340,7 @@ fun HutongApp() {
                         onVerifyAi = aiVoiceViewModel::verifyAccess,
                         onImport = { importLauncher.launch(arrayOf("text/csv", "text/calendar", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/octet-stream")) }
                     )
-                    else -> CalendarPage(remoteEvents, onAdd = { date -> createDate = date; showCreate = true }, onEdit = { editingEvent = it })
+                    else -> CalendarPage(remoteEvents, pendingInviteWeekEvents, onAdd = { date -> createDate = date; showCreate = true }, onEdit = { editingEvent = it })
                 }
                 AnimatedVisibility(
                     visible = page == "日程" && calendarLoading && remoteEvents.isEmpty(),
@@ -355,7 +381,7 @@ fun HutongApp() {
                 onCancel = { editingEvent = null }
             )
         }
-        if (showInvite) InviteDialog(friends, matchOptions, onScan = { receiverId, duration, startDate, endDate, startTime, endTime -> invitesViewModel.match(receiverId, duration, startDate, endDate, startTime, endTime) }, onSend = { receiverId, title, start, end -> invitesViewModel.create(receiverId, title, start, end) { created -> calendarViewModel.saveEvent(CalendarEvent("invite-${created.id}", currentUserId?.toString() ?: "guest", "${created.title}(待应约)", created.startAt.replace('T', ' '), created.endAt.replace('T', ' '), "邀约", EventStatus.PENDING)) }; showInvite = false }, onClose = { showInvite = false })
+        if (showInvite) InviteDialog(friends, matchOptions, onScan = { receiverId, duration, startDate, endDate, startTime, endTime -> invitesViewModel.match(receiverId, duration, startDate, endDate, startTime, endTime) }, onSend = { receiverId, title, start, end -> invitesViewModel.create(receiverId, title, start, end); showInvite = false }, onClose = { showInvite = false })
         friendMessage?.let { message ->
             AlertDialog(onDismissRequest = friendsViewModel::clearMessage, containerColor = Panel, title = { Text("好友") }, text = { Text(message, color = Muted) }, confirmButton = { TextButton(onClick = friendsViewModel::clearMessage) { Text("知道了", color = Coral) } })
         }
@@ -406,7 +432,7 @@ fun Header(eyebrow: String, title: String, action: String? = null, onAction: () 
 }
 
 @Composable
-fun CalendarPage(events: List<CalendarEvent>, onAdd: (String) -> Unit, onEdit: (CalendarEvent) -> Unit) {
+fun CalendarPage(events: List<CalendarEvent>, pendingInviteWeekEvents: List<CalendarEvent>, onAdd: (String) -> Unit, onEdit: (CalendarEvent) -> Unit) {
     var mode by remember { mutableStateOf(CalendarMode.MONTH) }
     val today = remember { LocalDate.now() }
     var year by remember { mutableStateOf(today.year) }
@@ -469,7 +495,10 @@ fun CalendarPage(events: List<CalendarEvent>, onAdd: (String) -> Unit, onEdit: (
         when (mode) {
             CalendarMode.MONTH -> MonthView(year, month, safeSelectedDay, events, onEdit, onSelect = { selectedDay = it }, onDoubleSelect = { selectedDay = it; mode = CalendarMode.DAY })
             CalendarMode.WEEK -> WeekView(
-                year, month, safeSelectedDay, events, onEdit,
+                year, month, safeSelectedDay,
+                // 同一条发出邀约可能已存在本地锁定记录；用远端覆盖层替换，避免绘制两个色块。
+                events.filterNot { event -> pendingInviteWeekEvents.any { it.id == event.id } } + pendingInviteWeekEvents,
+                onEdit,
                 onSelect = { selectedDate -> year = selectedDate.year; month = selectedDate.monthValue; selectedDay = selectedDate.dayOfMonth },
                 onDoubleSelect = { selectedDate -> year = selectedDate.year; month = selectedDate.monthValue; selectedDay = selectedDate.dayOfMonth; mode = CalendarMode.DAY }
             )
@@ -629,7 +658,11 @@ fun WeekScheduleGrid(days: List<LocalDate>, events: List<CalendarEvent>, onEdit:
                         val columnWidth = size.width / days.size.coerceAtLeast(1)
                         val dayIndex = (offset.x / columnWidth).toInt().coerceIn(0, days.lastIndex)
                         val minutes = (offset.y / size.height * 1440f).toInt()
-                        segmentsByDay[dayIndex].firstOrNull { minutes in it.startMinutes until it.endMinutes }?.let { onEdit(it.event) }
+                        segmentsByDay[dayIndex]
+                            .firstOrNull { minutes in it.startMinutes until it.endMinutes }
+                            ?.event
+                            ?.takeIf { it.status != EventStatus.PENDING }
+                            ?.let(onEdit)
                     }
                 }
         ) {
@@ -660,7 +693,7 @@ fun WeekScheduleGrid(days: List<LocalDate>, events: List<CalendarEvent>, onEdit:
                     val top = size.height * segment.startMinutes / 1440f + with(density) { 1.dp.toPx() }
                     val bottom = size.height * segment.endMinutes / 1440f - with(density) { 1.dp.toPx() }
                     drawRoundRect(
-                        color = categoryColors[segment.event.id] ?: Coral,
+                        color = if (segment.event.status == EventStatus.PENDING) PendingInviteGray else categoryColors[segment.event.id] ?: Coral,
                         topLeft = androidx.compose.ui.geometry.Offset(left, top),
                         size = androidx.compose.ui.geometry.Size(right - left, (bottom - top).coerceAtLeast(with(density) { 4.dp.toPx() })),
                         cornerRadius = androidx.compose.ui.geometry.CornerRadius(blockRadius, blockRadius)
@@ -767,10 +800,10 @@ fun eventColor(status: EventStatus): Color = when (status) { EventStatus.HARD ->
 @Composable fun TimeEvent(time: String, title: String, detail: String, color: Color, categoryColor: Color? = null, onClick: (() -> Unit)? = null) { Row(Modifier.fillMaxWidth().padding(top = 14.dp).then(if (onClick != null) Modifier.clickable { onClick() } else Modifier), verticalAlignment = Alignment.Top) { Text(time, color = Muted, fontSize = 11.sp, modifier = Modifier.width(92.dp)); Surface(color = color.copy(alpha = .14f), shape = RoundedCornerShape(topEnd = 10.dp, bottomEnd = 10.dp), modifier = Modifier.weight(1f).border(1.dp, color.copy(alpha = .7f), RoundedCornerShape(topEnd = 10.dp, bottomEnd = 10.dp))) { Column(Modifier.padding(9.dp)) { Row(verticalAlignment = Alignment.CenterVertically) { categoryColor?.let { Box(Modifier.size(8.dp).clip(CircleShape).background(it)); Spacer(Modifier.width(6.dp)) }; Text(title, color = MainText, fontWeight = FontWeight.Bold, fontSize = 12.sp) }; Text(detail, color = Muted, fontSize = 10.sp) } } } }
 
 @Composable
-fun MatchPage(invites: List<PendingInvite>, handledInvites: List<PendingInvite>, acceptedInvites: List<AcceptedInvite>, friends: List<FriendSummary>, searchResults: List<com.hutong.calendar.data.FriendUserDto>, friendships: List<com.hutong.calendar.data.FriendshipDto>, availability: List<com.hutong.calendar.data.AvailabilityBlockDto>, currentUserId: Int?, onSearchFriends: (String) -> Unit, onClearSearch: () -> Unit, onAddFriend: (com.hutong.calendar.data.FriendUserDto) -> Unit, onRespondFriend: (Int, String) -> Unit, onDeleteFriend: (Int) -> Unit, onViewAvailability: (Int, String) -> Unit, onStartInvite: () -> Unit, onRespond: (PendingInvite, String) -> Unit, onDeleteInvite: (Int) -> Unit) {
+fun MatchPage(invites: List<PendingInvite>, handledInvites: List<PendingInvite>, acceptedInvites: List<AcceptedInvite>, friends: List<FriendSummary>, searchResults: List<cn.wcylab.tempo.data.FriendUserDto>, friendships: List<cn.wcylab.tempo.data.FriendshipDto>, availability: List<cn.wcylab.tempo.data.AvailabilityBlockDto>, currentUserId: Int?, onSearchFriends: (String) -> Unit, onClearSearch: () -> Unit, onAddFriend: (cn.wcylab.tempo.data.FriendUserDto) -> Unit, onRespondFriend: (Int, String) -> Unit, onDeleteFriend: (Int) -> Unit, onViewAvailability: (Int, String) -> Unit, onStartInvite: () -> Unit, onRespond: (PendingInvite, String) -> Unit, onDeleteInvite: (Int) -> Unit) {
     var query by remember { mutableStateOf("") }
     var viewingFriend by remember { mutableStateOf<String?>(null) }
-    var selectedFriend by remember { mutableStateOf<com.hutong.calendar.data.FriendUserDto?>(null) }
+    var selectedFriend by remember { mutableStateOf<cn.wcylab.tempo.data.FriendUserDto?>(null) }
     var showAllAccepted by remember { mutableStateOf(false) }
     val upcomingAccepted = acceptedInvites.filter { invite ->
         runCatching { LocalDateTime.parse(invite.endAt.replace(' ', 'T')) > LocalDateTime.now() }.getOrDefault(true)
@@ -782,7 +815,7 @@ fun MatchPage(invites: List<PendingInvite>, handledInvites: List<PendingInvite>,
         Text("待应答邀约  ${invites.size}", color = MainText, fontSize = 19.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 25.dp, bottom = 12.dp))
         if (invites.isEmpty()) Text("暂时没有待应答邀约", color = Muted, modifier = Modifier.padding(vertical = 20.dp))
         invites.forEach { invite ->
-            InviteCard(invite, isSender = invite.inviter == "我", onCancel = { onRespond(invite, "CANCELLED") }, onDecline = { onRespond(invite, "DECLINED") }, onAccept = { onRespond(invite, "ACCEPTED") })
+            InviteCard(invite, onCancel = { onRespond(invite, "CANCELLED") }, onDecline = { onRespond(invite, "DECLINED") }, onAccept = { onRespond(invite, "ACCEPTED") })
             Spacer(Modifier.height(12.dp))
         }
         if (handledInvites.isNotEmpty()) {
@@ -899,7 +932,7 @@ fun MatchPage(invites: List<PendingInvite>, handledInvites: List<PendingInvite>,
 }
 
 @Composable
-fun FriendWeekTable(blocks: List<com.hutong.calendar.data.AvailabilityBlockDto>) {
+fun FriendWeekTable(blocks: List<cn.wcylab.tempo.data.AvailabilityBlockDto>) {
     val dates = (0..6).map { LocalDate.now().minusDays((LocalDate.now().dayOfWeek.value - 1 - it).toLong()).toString() }
     Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
         Row(Modifier.fillMaxWidth()) {
@@ -919,7 +952,8 @@ fun FriendWeekTable(blocks: List<com.hutong.calendar.data.AvailabilityBlockDto>)
     }
 }
 
-@Composable fun InviteCard(invite: PendingInvite, isSender: Boolean, onCancel: () -> Unit, onDecline: () -> Unit, onAccept: () -> Unit) {
+@Composable fun InviteCard(invite: PendingInvite, onCancel: () -> Unit, onDecline: () -> Unit, onAccept: () -> Unit) {
+    val isSender = invite.isSender
     Surface(color = Panel, shape = RoundedCornerShape(18.dp)) {
         Column(Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -948,8 +982,8 @@ fun FriendWeekTable(blocks: List<com.hutong.calendar.data.AvailabilityBlockDto>)
 @Composable
 fun HandledInviteCard(invite: PendingInvite, onDelete: () -> Unit) {
     val (label, color, detail) = when (invite.status) {
-        "DECLINED" -> Triple("已拒绝", Red, if (invite.inviter == "我") "对方拒绝了这条邀约" else "你已拒绝这条邀约")
-        "CANCELLED" -> Triple("已取消", Muted, if (invite.inviter == "我") "你已取消这条邀约" else "发起人已取消这条邀约")
+        "DECLINED" -> Triple("已拒绝", Red, if (invite.isSender) "对方拒绝了这条邀约" else "你已拒绝这条邀约")
+        "CANCELLED" -> Triple("已取消", Muted, if (invite.isSender) "你已取消这条邀约" else "发起人已取消这条邀约")
         else -> Triple("已过期", Muted, "这条邀约已超过应答时间")
     }
     Surface(color = Panel, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
@@ -957,7 +991,7 @@ fun HandledInviteCard(invite: PendingInvite, onDelete: () -> Unit) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text(invite.title, color = MainText, fontWeight = FontWeight.Bold)
-                    Text(if (invite.inviter == "我") "你邀请 ${invite.receiver}" else "${invite.inviter} 邀请你", color = Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 3.dp))
+                    Text(if (invite.isSender) "你邀请 ${invite.receiver}" else "${invite.inviter} 邀请你", color = Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 3.dp))
                 }
                 Text(label, color = color, fontSize = 12.sp)
             }
@@ -970,7 +1004,7 @@ fun HandledInviteCard(invite: PendingInvite, onDelete: () -> Unit) {
 
 @Composable
 fun GroupPage(
-    groups: List<com.hutong.calendar.data.GroupDto>, activities: List<GroupActivityDto>, invitations: List<GroupInvitationDto>, selectedGroupId: Int?, friends: List<FriendSummary>, currentUserId: Int?, loading: Boolean,
+    groups: List<cn.wcylab.tempo.data.GroupDto>, activities: List<GroupActivityDto>, invitations: List<GroupInvitationDto>, selectedGroupId: Int?, friends: List<FriendSummary>, currentUserId: Int?, loading: Boolean,
     onSelectGroup: (Int) -> Unit, onCreateGroup: (String) -> Unit, onRenameGroup: (String) -> Unit, onAddMember: (Int) -> Unit, onRemoveMember: (Int) -> Unit, onRespondInvitation: (Int, String) -> Unit, onCreateActivity: (GroupActivityCreateDto) -> Unit,
     onJoin: (Int) -> Unit, onLeave: (Int) -> Unit, onRespond: (Int, String) -> Unit, onRecalculate: (Int) -> Unit, onCancelActivity: (Int) -> Unit
 ) {
@@ -1099,8 +1133,11 @@ fun GroupActivityCard(activity: GroupActivityDto, currentUserId: Int?, isOwner: 
             if (!joined && activity.status in setOf("MATCHING", "CONFIRMING", "RECALC_REQUIRED")) Text(if (activity.status == "MATCHING") "系统正在匹配，暂不可加入。" else "活动已进入确认阶段，暂不可加入。", color = Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 7.dp))
             val canManage = isOwner || activity.creatorId == currentUserId
             Row(Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                if (!joined && activity.status == "OPEN") Button(onClick = { onJoin(activity.id) }, colors = ButtonDefaults.buttonColors(containerColor = Coral)) { Text("我有空 / 参与") }
-                if (joined && activity.status == "OPEN") OutlinedButton(onClick = { onLeave(activity.id) }) { Text("退出接龙") }
+                if (!joined && activity.status == "OPEN") {
+                    Button(onClick = { onJoin(activity.id) }, colors = ButtonDefaults.buttonColors(containerColor = Coral)) { Text("我有空 / 参与") }
+                    OutlinedButton(onClick = { onLeave(activity.id) }) { Text("不参加") }
+                }
+                if (joined && activity.status == "OPEN") OutlinedButton(onClick = { onLeave(activity.id) }) { Text("不参加") }
                 if (pending) { OutlinedButton(onClick = { onRespond(activity.id, "DECLINED") }) { Text("拒绝") }; Button(onClick = { onRespond(activity.id, "CONFIRMED") }, colors = ButtonDefaults.buttonColors(containerColor = Coral)) { Text("确认出席") } }
                 if (canManage && activity.status in setOf("RECALC_REQUIRED", "NO_AVAILABLE")) Button(onClick = { onRecalculate(activity.id) }, colors = ButtonDefaults.buttonColors(containerColor = Blue)) { Text("重新匹配") }
                 if (canManage && activity.status !in setOf("CONFIRMED", "CANCELLED")) TextButton(onClick = { showCancelConfirm = true }) { Text("取消活动", color = Red) }
@@ -1792,11 +1829,11 @@ fun TimeGridDialog(initialStart: String?, initialEnd: String?, date: String? = n
 }
 
 @Composable
-fun InviteDialog(friends: List<FriendSummary>, candidateOptions: List<com.hutong.calendar.data.MatchOptionDto>, onScan: (Int, Int, String?, String?, String?, String?) -> Unit, onSend: (Int, String, String, String) -> Unit, onClose: () -> Unit) {
+fun InviteDialog(friends: List<FriendSummary>, candidateOptions: List<cn.wcylab.tempo.data.MatchOptionDto>, onScan: (Int, Int, String?, String?, String?, String?) -> Unit, onSend: (Int, String, String, String) -> Unit, onClose: () -> Unit) {
     var title by remember { mutableStateOf("") }
     var friend by remember { mutableStateOf(friends.firstOrNull()) }
     var scanned by remember { mutableStateOf(false) }
-    var selectedSlot by remember { mutableStateOf<com.hutong.calendar.data.MatchOptionDto?>(null) }
+    var selectedSlot by remember { mutableStateOf<cn.wcylab.tempo.data.MatchOptionDto?>(null) }
     var durationSlots by remember { mutableStateOf(4) }
     var showDurationPicker by remember { mutableStateOf(false) }
     var showWindowPicker by remember { mutableStateOf(false) }

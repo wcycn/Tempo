@@ -1,6 +1,8 @@
-# 互通日历 Android 原型
+# Tempo Android 原型
 
 这是面向 Android 手机的 Jetpack Compose 原生原型，视觉采用黑/深灰卡片和 Tempo 蓝色主题，支持浅色、深色和跟随系统。
+
+Android 应用标识为 `cn.wcylab.tempo`，源码包统一位于 `cn.wcylab.tempo`。
 
 ## 打开方式
 

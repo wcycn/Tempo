@@ -1,11 +1,11 @@
-package com.hutong.calendar
+package cn.wcylab.tempo
 
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
-import com.hutong.calendar.data.MockContentDataSource
-import com.hutong.calendar.data.PendingInvite
+import cn.wcylab.tempo.data.MockContentDataSource
+import cn.wcylab.tempo.data.PendingInvite
 
 class ContentViewModel : ViewModel() {
     private val dataSource = MockContentDataSource()

@@ -1,7 +1,16 @@
-package com.hutong.calendar.data
+package cn.wcylab.tempo.data
 
 data class FriendSummary(val id: String, val name: String, val availability: String)
-data class PendingInvite(val id: String, val title: String, val time: String, val inviter: String, val receiver: String = "好友", val description: String? = null, val status: String = "PENDING")
+data class PendingInvite(
+    val id: String,
+    val title: String,
+    val time: String,
+    val inviter: String,
+    val receiver: String = "好友",
+    val description: String? = null,
+    val status: String = "PENDING",
+    val isSender: Boolean = false,
+)
 data class AcceptedInvite(val id: String, val title: String, val time: String, val counterpart: String, val startAt: String, val endAt: String, val description: String? = null)
 data class GroupSummary(val name: String, val activity: String, val detail: String)
 

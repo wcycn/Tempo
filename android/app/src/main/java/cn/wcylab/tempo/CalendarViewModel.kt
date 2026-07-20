@@ -1,4 +1,4 @@
-package com.hutong.calendar
+package cn.wcylab.tempo
 
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -7,15 +7,15 @@ import android.app.Application
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.hutong.calendar.data.CalendarEvent
-import com.hutong.calendar.data.CachedEvent
-import com.hutong.calendar.data.EventStatus
-import com.hutong.calendar.data.TempoDatabase
-import com.hutong.calendar.data.TokenStore
-import com.hutong.calendar.data.TempoApiFactory
-import com.hutong.calendar.data.AvailabilityBlockDto
-import com.hutong.calendar.data.AvailabilityUpdateDto
-import com.hutong.calendar.data.CalendarDataRepository
+import cn.wcylab.tempo.data.CalendarEvent
+import cn.wcylab.tempo.data.CachedEvent
+import cn.wcylab.tempo.data.EventStatus
+import cn.wcylab.tempo.data.TempoDatabase
+import cn.wcylab.tempo.data.TokenStore
+import cn.wcylab.tempo.data.TempoApiFactory
+import cn.wcylab.tempo.data.AvailabilityBlockDto
+import cn.wcylab.tempo.data.AvailabilityUpdateDto
+import cn.wcylab.tempo.data.CalendarDataRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -62,7 +62,9 @@ class CalendarViewModel(application: Application) : AndroidViewModel(application
             runCatching { remote.syncSnapshot() }.onSuccess { snapshot ->
                 val previous = tokenStore.serverSyncVersion()
                     val current = snapshot.serverVersion
-                    if (!current.isNullOrBlank()) {
+                        ?.trim()
+                        ?.takeIf { it.isNotEmpty() }
+                    if (current != null) {
                         if (previous != null && previous != current) _syncNotice.value = "服务器数据已更新，正在使用最新状态"
                         tokenStore.saveServerSyncVersion(current)
                     }
@@ -144,7 +146,7 @@ class CalendarViewModel(application: Application) : AndroidViewModel(application
         val days = (0..730).map { dateOffset ->
             val date = start.plusDays(dateOffset.toLong())
             val info = CalendarInfoProvider.info(date)
-            com.hutong.calendar.data.CachedCalendarDay(ownerId, date.toString(), date.toString(), info.lunar, info.festival, info.solarTerm)
+            cn.wcylab.tempo.data.CachedCalendarDay(ownerId, date.toString(), date.toString(), info.lunar, info.festival, info.solarTerm)
         }
         local.replaceCalendarDays(days)
     }
@@ -154,10 +156,38 @@ class CalendarViewModel(application: Application) : AndroidViewModel(application
         runCatching {
             val all = local.events(ownerId)
             val selected = if (date == null) all else all.filter { it.start.startsWith(date) }
-            remote.updateAvailability(AvailabilityUpdateDto(selected.map {
-                AvailabilityBlockDto(it.start.substringBefore(" "), it.start.substringAfter(" "), it.end.substringAfter(" "), if (it.status == EventStatus.PENDING.name) EventStatus.HARD.name else it.status)
-            }))
+            val blocks = selected.mapNotNull { event ->
+                // 待应答邀约由服务端 Invite 状态实现不对称锁定，不能伪装成 HARD 上传。
+                if (event.status == EventStatus.PENDING.name) return@mapNotNull null
+                val start = normalizeDateTime(event.start) ?: return@mapNotNull null
+                val end = normalizeDateTime(event.end) ?: return@mapNotNull null
+                AvailabilityBlockDto(
+                    date = start.first,
+                    startTime = start.second,
+                    endTime = if (end.first != start.first && end.second == "00:00") "24:00" else end.second,
+                    status = event.status
+                )
+            }
+            remote.updateAvailability(
+                AvailabilityUpdateDto(
+                    blocks = blocks,
+                    dates = date?.let(::listOf).orEmpty(),
+                    replaceAll = date == null
+                )
+            )
         }
+    }
+
+    private fun normalizeDateTime(value: String): Pair<String, String>? {
+        val text = value.trim().replace('T', ' ')
+        val date = Regex("^(\\d{4}-\\d{2}-\\d{2})").find(text)?.groupValues?.get(1) ?: return null
+        val time = Regex("(?:^| )(\\d{1,2}:\\d{2})").find(text)?.groupValues?.get(1) ?: return null
+        val parts = time.split(':')
+        if (parts.size != 2) return null
+        val hour = parts[0].toIntOrNull() ?: return null
+        val minute = parts[1].toIntOrNull() ?: return null
+        if (hour !in 0..24 || minute !in 0..59 || (hour == 24 && minute != 0)) return null
+        return date to "%02d:%02d".format(hour, minute)
     }
 }
 

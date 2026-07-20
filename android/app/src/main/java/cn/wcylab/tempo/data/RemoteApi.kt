@@ -1,6 +1,7 @@
-package com.hutong.calendar.data
+package cn.wcylab.tempo.data
 
-import com.hutong.calendar.BuildConfig
+import android.util.Log
+import cn.wcylab.tempo.BuildConfig
 import com.google.gson.annotations.SerializedName
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
@@ -13,6 +14,7 @@ import retrofit2.http.Multipart
 import retrofit2.http.Part
 import okhttp3.MultipartBody
 import okhttp3.RequestBody
+import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 data class LoginRequestDto(val account: String, val password: String)
@@ -34,7 +36,11 @@ data class GroupInvitationResponseDto(val status: String)
 data class NotificationDto(val id: Int, val type: String, val title: String, val body: String, @SerializedName("reference_type") val referenceType: String? = null, @SerializedName("reference_id") val referenceId: String? = null, @SerializedName("created_at") val createdAt: String)
 data class GroupActivityCreateDto(val title: String, val description: String? = null, @SerializedName("duration_minutes") val durationMinutes: Int = 60, @SerializedName("min_participants") val minParticipants: Int = 2, @SerializedName("participant_mode") val participantMode: String = "MINIMUM", @SerializedName("deadline_at") val deadlineAt: String, @SerializedName("time_rule") val timeRule: String, @SerializedName("fixed_start_at") val fixedStartAt: String? = null, @SerializedName("fixed_end_at") val fixedEndAt: String? = null, @SerializedName("window_start_at") val windowStartAt: String? = null, @SerializedName("window_end_at") val windowEndAt: String? = null)
 data class AvailabilityBlockDto(val date: String, @SerializedName("start_time") val startTime: String, @SerializedName("end_time") val endTime: String, val status: String)
-data class AvailabilityUpdateDto(val blocks: List<AvailabilityBlockDto>)
+data class AvailabilityUpdateDto(
+    val blocks: List<AvailabilityBlockDto>,
+    val dates: List<String> = emptyList(),
+    @SerializedName("replace_all") val replaceAll: Boolean = false
+)
 data class AuthResponseDto(@SerializedName("access_token") val accessToken: String, @SerializedName("token_type") val tokenType: String, val user: UserDto)
 data class SessionDto(@SerializedName("session_key") val sessionKey: String, @SerializedName("created_at") val createdAt: String, @SerializedName("expires_at") val expiresAt: String, @SerializedName("is_current") val isCurrent: Boolean)
 data class InviteDto(val id: Int, @SerializedName("sender_id") val senderId: Int, @SerializedName("receiver_id") val receiverId: Int, val title: String, val description: String?, @SerializedName("sender_display_name") val senderDisplayName: String? = null, @SerializedName("receiver_display_name") val receiverDisplayName: String? = null, @SerializedName("start_at") val startAt: String, @SerializedName("end_at") val endAt: String, val status: String)
@@ -55,11 +61,15 @@ interface TempoApi {
     @DELETE("api/auth/sessions/{sessionKey}") suspend fun revokeSession(@retrofit2.http.Path("sessionKey") sessionKey: String)
     @PATCH("api/auth/me") suspend fun updateProfile(@Body body: ProfileUpdateRequestDto): UserDto
     @POST("api/ai/access/verify") suspend fun verifyAiAccess(@Body body: AiAccessVerifyRequestDto): AiAccessVerifyResponseDto
-    @GET("api/friends/search") suspend fun searchFriends(@retrofit2.http.Query("q") query: String): List<FriendUserDto>
+    @GET("api/friends/find") suspend fun searchFriends(@retrofit2.http.Query("q") query: String): List<FriendUserDto>
     @GET("api/friends") suspend fun listFriends(): List<FriendshipDto>
     @POST("api/friends/requests") suspend fun sendFriendRequest(@Body body: FriendRequestDto): FriendshipDto
     @PATCH("api/friends/{friendshipId}") suspend fun respondFriend(@retrofit2.http.Path("friendshipId") id: Int, @Body body: FriendResponseDto): FriendshipDto
-    @DELETE("api/friends/{friendshipId}") suspend fun deleteFriend(@retrofit2.http.Path("friendshipId") id: Int)
+    @DELETE("api/friends/{friendshipId}")
+    suspend fun deleteFriend(
+        @retrofit2.http.Path("friendshipId") id: Int,
+        @retrofit2.http.Query("confirm") confirm: Boolean = true
+    )
     @GET("api/friends/{friendId}/availability") suspend fun friendAvailability(@retrofit2.http.Path("friendId") id: Int, @retrofit2.http.Query("date") date: String): List<AvailabilityBlockDto>
     @retrofit2.http.PUT("api/friends/availability") suspend fun updateAvailability(@Body body: AvailabilityUpdateDto)
     @GET("api/groups") suspend fun groups(): List<GroupDto>
@@ -82,7 +92,17 @@ interface TempoApi {
     @POST("api/invites") suspend fun createInvite(@Body body: InviteCreateDto): InviteDto
     @PATCH("api/invites/{inviteId}") suspend fun respondInvite(@retrofit2.http.Path("inviteId") id: Int, @Body body: FriendResponseDto): InviteDto
     @DELETE("api/invites/{inviteId}") suspend fun deleteInvite(@retrofit2.http.Path("inviteId") id: Int)
-    @POST("api/invites/match") suspend fun match(@Body body: MatchRequestDto): List<MatchOptionDto>
+    @POST("api/invites/options") suspend fun match(@Body body: MatchRequestDto): List<MatchOptionDto>
+    @GET("api/invites/options") suspend fun matchOptions(
+        @retrofit2.http.Query("receiver_id") receiverId: Int,
+        @retrofit2.http.Query("duration_minutes") durationMinutes: Int,
+        @retrofit2.http.Query("from_date") fromDate: String,
+        @retrofit2.http.Query("days") days: Int = 7,
+        @retrofit2.http.Query("window_start_date") windowStartDate: String? = null,
+        @retrofit2.http.Query("window_end_date") windowEndDate: String? = null,
+        @retrofit2.http.Query("window_start_time") windowStartTime: String? = null,
+        @retrofit2.http.Query("window_end_time") windowEndTime: String? = null
+    ): List<MatchOptionDto>
     @Multipart
     @POST("api/ai/calendar/parse-audio")
     suspend fun parseCalendarAudio(@retrofit2.http.Header("X-Tempo-AI-Token") aiToken: String, @Part file: MultipartBody.Part, @Part("timezone") timezone: RequestBody, @Part("today") today: RequestBody): CalendarDraftResponseDto
@@ -93,14 +113,37 @@ object TempoApiFactory {
         .baseUrl(BuildConfig.API_BASE_URL)
         .addConverterFactory(GsonConverterFactory.create())
         .client(okhttp3.OkHttpClient.Builder()
+            // 国内部分移动网络到 Cloudflare 的 HTTP/2 长连接会被中途重置。
+            // 固定使用 HTTP/1.1；TLS 与证书验证仍完全由系统和 OkHttp 处理。
+            .protocols(listOf(okhttp3.Protocol.HTTP_1_1))
+            .retryOnConnectionFailure(true)
             .connectTimeout(20, TimeUnit.SECONDS)
             .writeTimeout(90, TimeUnit.SECONDS)
             .readTimeout(120, TimeUnit.SECONDS)
             .callTimeout(150, TimeUnit.SECONDS)
             .addInterceptor { chain ->
-                val request = chain.request().newBuilder()
+                val original = chain.request()
+                val request = original.newBuilder()
                 tokenProvider()?.let { request.header("Authorization", "Bearer $it") }
-                chain.proceed(request.build())
+                val prepared = request.build()
+                Log.d("TempoApi", "request ${prepared.method} ${prepared.url.encodedPath}")
+                try {
+                    val response = chain.proceed(prepared)
+                    Log.d("TempoApi", "response ${response.code} ${prepared.url.encodedPath}")
+                    response
+                } catch (error: IOException) {
+                    val detail = error.message?.takeIf { it.isNotBlank() } ?: "连接被重置"
+                    Log.e(
+                        "TempoApi",
+                        "transport ${prepared.method} ${prepared.url.encodedPath}: " +
+                            "${error.javaClass.simpleName}: $detail",
+                        error
+                    )
+                    throw IOException(
+                        "${prepared.method} ${prepared.url.encodedPath} 请求失败：$detail",
+                        error
+                    )
+                }
             }.build())
         .build()
         .create(TempoApi::class.java)

@@ -1,4 +1,4 @@
-package com.hutong.calendar.data
+package cn.wcylab.tempo.data
 
 import android.content.Context
 import androidx.security.crypto.EncryptedSharedPreferences
@@ -18,7 +18,11 @@ class TokenStore(context: Context) {
     fun saveAiAccessToken(token: String) { prefs.edit().putString(KEY_AI_ACCESS_TOKEN, token).apply() }
     fun clearAiAccessToken() { prefs.edit().remove(KEY_AI_ACCESS_TOKEN).apply() }
     fun serverSyncVersion(): String? = prefs.getString(KEY_SERVER_SYNC_VERSION, null)
-    fun saveServerSyncVersion(version: String) { prefs.edit().putString(KEY_SERVER_SYNC_VERSION, version).apply() }
+    fun saveServerSyncVersion(version: String?) {
+        version?.trim()?.takeIf { it.isNotEmpty() }?.let {
+            prefs.edit().putString(KEY_SERVER_SYNC_VERSION, it).apply()
+        }
+    }
     fun bumpLocalRevision(): Long {
         val next = prefs.getLong(KEY_LOCAL_REVISION, 0L) + 1L
         prefs.edit().putLong(KEY_LOCAL_REVISION, next).apply()

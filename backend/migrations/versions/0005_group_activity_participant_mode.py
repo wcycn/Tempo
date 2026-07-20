@@ -13,8 +13,12 @@ depends_on = None
 
 
 def upgrade():
-    op.add_column("group_activities", sa.Column("participant_mode", sa.String(length=16), nullable=False, server_default="MINIMUM"))
+    inspector = sa.inspect(op.get_bind())
+    columns = {column["name"] for column in inspector.get_columns("group_activities")}
+    if "participant_mode" not in columns:
+        op.add_column("group_activities", sa.Column("participant_mode", sa.String(length=16), nullable=False, server_default="MINIMUM"))
 
 
 def downgrade():
-    op.drop_column("group_activities", "participant_mode")
+    if "participant_mode" in {column["name"] for column in sa.inspect(op.get_bind()).get_columns("group_activities")}:
+        op.drop_column("group_activities", "participant_mode")

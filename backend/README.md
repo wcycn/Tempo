@@ -1,6 +1,6 @@
 # Tempo 后端
 
-当前后端采用 FastAPI + SQLAlchemy + SQLite。SQLite 适合本机和树莓派开发阶段；正式多人部署时迁移到 PostgreSQL，接口层不需要重写。
+当前后端采用 FastAPI + SQLAlchemy + SQLite。SQLite 适合本机、树莓派和小规模内测；正式多人部署时可以迁移到 PostgreSQL，接口层不需要重写。
 
 目录按职责划分：`app/config.py` 配置，`app/database.py` 数据库连接，`app/models.py` 数据表，`app/routes/` HTTP 接口，`app/security.py` 密码和会话安全。业务规则继续增长后放入 `app/services/`，避免把复杂逻辑堆在路由函数中。
 
@@ -16,6 +16,8 @@ uvicorn app.main:app --host 0.0.0.0 --port 8765 --reload
 ```
 
 打开 `http://127.0.0.1:8765/docs` 可以查看 Swagger 接口文档。
+
+生产环境启动时应设置 `AUTO_CREATE_DB=false`，由 Alembic 先完成迁移，再启动 systemd 服务；这样应用进程不会自行改变数据库结构。
 
 ## 当前接口
 
@@ -96,7 +98,46 @@ pip install -r requirements-dev.txt
 pytest -q tests
 ```
 
-服务器 systemd 部署使用 `backend/deploy/tempo-backend.service`（由管理员安装到 `/etc/systemd/system/`）。备份和会话清理 timer 文件也在同一目录。Nginx HTTPS 反向代理模板为 `backend/deploy/nginx-tempo.conf.example`，实际启用前必须替换域名并配置证书。
+服务器 systemd 部署使用 `backend/deploy/install_tempo.sh`，它会创建受限的 `tempo` 系统用户、虚拟环境、systemd 服务和每日维护 timer。服务只监听 `127.0.0.1:3001`，公网访问必须经过 Nginx；不要直接把 Uvicorn 端口暴露到公网。
+
+典型生产配置：
+
+```env
+APP_ENV=production
+APP_VERSION=0.4.0
+AUTO_CREATE_DB=false
+DATABASE_URL=sqlite:////srv/tempo/app/calendar.db
+ALLOWED_ORIGINS=
+TRUSTED_HOSTS=api.wcylab.cn,localhost,127.0.0.1
+BACKUP_DIR=/srv/tempo/backups
+LOG_LEVEL=INFO
+```
+
+首次部署顺序：
+
+```bash
+cd /srv/tempo/app
+cp .env.example .env
+# 编辑 .env，至少生成强随机的 AI_ACCESS_SECRET；没有 AI 时可留空
+/srv/tempo/venv/bin/python scripts/migrate.py
+systemctl restart tempo-backend
+systemctl status tempo-backend --no-pager
+python3 scripts/smoke_check.py http://127.0.0.1:3001
+```
+
+安装脚本：
+
+```bash
+sudo bash /srv/tempo/app/deploy/install_tempo.sh
+```
+
+安装脚本不会生成或覆盖 `.env`，也不会开放云安全组端口。80/443 只应在 Nginx 和证书准备完成后开放。
+
+DNS 尚未生效时，可先使用 `backend/deploy/nginx-wcylab-tempo-http.conf.example` 做 HTTP 临时反向代理；待 `api.wcylab.cn` 指向新服务器后，再使用 Certbot 申请证书并切换 HTTPS。Certbot 申请命令示例：
+
+```bash
+sudo certbot --nginx -d api.wcylab.cn
+```
 
 API 只记录请求方法、路径、状态码、耗时和请求 ID，不记录密码、Token、请求体或录音内容。正式部署应把备份目录放在应用目录之外，例如 `/srv/tempo/backups`，并通过 systemd timer 定期执行备份。当前服务器已启用每日备份和会话清理。
 

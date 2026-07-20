@@ -169,6 +169,8 @@ class AvailabilityBlockInput(BaseModel):
 
 class AvailabilityUpdate(BaseModel):
     blocks: list[AvailabilityBlockInput] = Field(default_factory=list, max_length=1000)
+    dates: list[str] = Field(default_factory=list, max_length=366)
+    replace_all: bool = False
 
 
 class AvailabilityPublic(AvailabilityBlockInput):

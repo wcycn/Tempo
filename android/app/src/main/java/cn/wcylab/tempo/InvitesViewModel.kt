@@ -1,17 +1,18 @@
-package com.hutong.calendar
+package cn.wcylab.tempo
 
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.hutong.calendar.data.InviteCreateDto
-import com.hutong.calendar.data.InviteDto
-import com.hutong.calendar.data.MatchOptionDto
-import com.hutong.calendar.data.MatchRequestDto
-import com.hutong.calendar.data.TempoApiFactory
-import com.hutong.calendar.data.TokenStore
+import cn.wcylab.tempo.data.InviteCreateDto
+import cn.wcylab.tempo.data.InviteDto
+import cn.wcylab.tempo.data.MatchOptionDto
+import cn.wcylab.tempo.data.MatchRequestDto
+import cn.wcylab.tempo.data.TempoApiFactory
+import cn.wcylab.tempo.data.TokenStore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import retrofit2.HttpException
 
 class InvitesViewModel(application: Application) : AndroidViewModel(application) {
@@ -32,21 +33,23 @@ class InvitesViewModel(application: Application) : AndroidViewModel(application)
             return@launch
         }
         _loading.value = true
-        runCatching { api.invites() }.onSuccess { _items.value = it }.onFailure { _message.value = friendly(it) }
+        runCatching { retryRequest { api.invites() } }.onSuccess { _items.value = it }
         _loading.value = false
     }
     fun create(receiverId: Int, title: String, startAt: String, endAt: String, onCreated: (InviteDto) -> Unit = {}) = viewModelScope.launch {
+        // 创建请求不能自动重试：若服务器已创建成功但响应中断，重试会生成重复邀约。
         runCatching { api.createInvite(InviteCreateDto(receiverId, title, startAt = startAt, endAt = endAt)) }
             .onSuccess { item -> refresh(); onCreated(item); _message.value = "邀约已发送" }.onFailure { _message.value = friendly(it) }
     }
     fun match(receiverId: Int, durationMinutes: Int, windowStartDate: String? = null, windowEndDate: String? = null, windowStartTime: String? = null, windowEndTime: String? = null) = viewModelScope.launch {
         _loading.value = true
-        runCatching { api.match(MatchRequestDto(receiverId, durationMinutes, java.time.LocalDate.now().toString(), windowStartDate = windowStartDate, windowEndDate = windowEndDate, windowStartTime = windowStartTime, windowEndTime = windowEndTime)) }
+        runCatching { api.matchOptions(receiverId, durationMinutes, java.time.LocalDate.now().toString(), 7, windowStartDate, windowEndDate, windowStartTime, windowEndTime) }
             .onSuccess { _options.value = it }.onFailure { _options.value = emptyList(); _message.value = friendly(it) }
         _loading.value = false
     }
     fun respond(id: Int, status: String, onCompleted: (InviteDto) -> Unit) = viewModelScope.launch {
-        runCatching { api.respondInvite(id, com.hutong.calendar.data.FriendResponseDto(status)) }
+        // 应答会改变状态，避免重试后把已成功的操作误报成“邀约不存在”。
+        runCatching { api.respondInvite(id, cn.wcylab.tempo.data.FriendResponseDto(status)) }
             .onSuccess { item -> refresh(); onCompleted(item) }
             .onFailure { _message.value = friendly(it) }
     }
@@ -57,5 +60,26 @@ class InvitesViewModel(application: Application) : AndroidViewModel(application)
     }
     fun clearMessage() { _message.value = null }
     fun clearOptions() { _options.value = emptyList() }
-    private fun friendly(error: Throwable) = if (error is HttpException && error.code() in 500..599) "服务器暂时不可用，请稍后重试" else "邀约操作失败，请稍后重试"
+    private suspend fun <T> retryRequest(block: suspend () -> T): T {
+        var last: Exception? = null
+        repeat(3) { attempt ->
+            try { return block() } catch (error: Exception) {
+                last = error
+                if (attempt < 2) delay(300L * (attempt + 1))
+            }
+        }
+        throw last ?: IllegalStateException("request failed")
+    }
+    private fun friendly(error: Throwable) = when (error) {
+        is HttpException -> when (error.code()) {
+            401 -> "登录状态已失效，请重新登录"
+            403 -> "没有权限执行此邀约操作"
+            404 -> "好友或邀约不存在，可能已被删除"
+            409 -> "该时间已发生冲突，请重新扫描"
+            422 -> "邀约时间或活动信息不符合要求"
+            in 500..599 -> "服务器暂时不可用，请稍后重试"
+            else -> "邀约操作失败（HTTP ${error.code()}）"
+        }
+        else -> "邀约网络请求失败：${error.javaClass.simpleName}${error.message?.let { "（$it）" } ?: ""}"
+    }
 }

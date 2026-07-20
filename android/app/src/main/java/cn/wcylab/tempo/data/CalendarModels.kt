@@ -1,4 +1,4 @@
-package com.hutong.calendar.data
+package cn.wcylab.tempo.data
 
 data class CalendarEvent(
     val id: String,

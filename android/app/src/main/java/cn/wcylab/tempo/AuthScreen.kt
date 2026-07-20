@@ -1,4 +1,4 @@
-package com.hutong.calendar
+package cn.wcylab.tempo
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
@@ -15,6 +15,8 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -39,6 +41,7 @@ fun AuthScreen(state: AuthState, onLogin: (String, String) -> Unit, onRegister: 
     var email by remember { mutableStateOf("") }
     var displayName by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
+    var passwordVisible by remember { mutableStateOf(false) }
     var formError by remember { mutableStateOf<String?>(null) }
     val error = formError ?: (state as? AuthState.Error)?.message
 
@@ -46,8 +49,8 @@ fun AuthScreen(state: AuthState, onLogin: (String, String) -> Unit, onRegister: 
     Column(Modifier.fillMaxSize().padding(28.dp), verticalArrangement = Arrangement.Center) {
         TextButton(onClick = onBack) { Text("‹ 返回日历", color = Muted) }
         Image(
-            painter = painterResource(com.hutong.calendar.R.drawable.logo),
-            contentDescription = "互通日历 Logo",
+            painter = painterResource(cn.wcylab.tempo.R.drawable.logo),
+            contentDescription = "Tempo Logo",
             contentScale = ContentScale.Crop,
             modifier = Modifier.size(92.dp).clip(RoundedCornerShape(22.dp))
         )
@@ -63,7 +66,19 @@ fun AuthScreen(state: AuthState, onLogin: (String, String) -> Unit, onRegister: 
         }
         OutlinedTextField(account, { account = it }, label = { Text(if (registerMode) "用户名（登录账号，不能重复）" else "用户名或邮箱") }, singleLine = true, modifier = Modifier.fillMaxWidth())
         Spacer(Modifier.height(10.dp))
-        OutlinedTextField(password, { password = it }, label = { Text("密码") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(
+            value = password,
+            onValueChange = { password = it },
+            label = { Text("密码") },
+            singleLine = true,
+            visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+            trailingIcon = {
+                TextButton(onClick = { passwordVisible = !passwordVisible }) {
+                    Text(if (passwordVisible) "隐藏" else "显示")
+                }
+            },
+            modifier = Modifier.fillMaxWidth()
+        )
         error?.let { Text(it, color = Red, fontSize = 12.sp, modifier = Modifier.padding(top = 10.dp)) }
         Spacer(Modifier.height(18.dp))
         if (state is AuthState.Loading) {
@@ -90,7 +105,7 @@ fun AuthScreen(state: AuthState, onLogin: (String, String) -> Unit, onRegister: 
                 Text(if (registerMode) "已有账号，返回登录" else "还没有账号？注册")
             }
         }
-        Text("当前服务地址：${BuildConfig.API_BASE_URL}", color = Color.Gray, fontSize = 10.sp, modifier = Modifier.padding(top = 18.dp))
+        Text("Tempo v${BuildConfig.VERSION_NAME} · 当前服务地址：${BuildConfig.API_BASE_URL}", color = Color.Gray, fontSize = 10.sp, modifier = Modifier.padding(top = 18.dp))
     }
     }
 }

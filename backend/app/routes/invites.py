@@ -1,5 +1,5 @@
 from datetime import datetime, date, time, timedelta
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
@@ -20,6 +20,7 @@ def _invite_payload(invite: Invite, db: Session) -> dict:
     return payload
 
 
+@router.post("/options", response_model=list[MatchOption])
 @router.post("/match", response_model=list[MatchOption])
 def match_times(payload: MatchRequest, user: User = Depends(current_user), db: Session = Depends(get_db)):
     if payload.receiver_id == user.id or not db.get(User, payload.receiver_id):
@@ -29,12 +30,56 @@ def match_times(payload: MatchRequest, user: User = Depends(current_user), db: S
         raise HTTPException(400, "匹配时间范围无效")
     blocks = db.scalars(select(AvailabilityBlock).where(AvailabilityBlock.user_id.in_([user.id, payload.receiver_id]))).all()
     by_user = {user.id: [b for b in blocks if b.user_id == user.id], payload.receiver_id: [b for b in blocks if b.user_id == payload.receiver_id]}
+    locks = _invite_locks(db, [user.id, payload.receiver_id])
     slots_needed = payload.duration_minutes // 15
-    pure = _collect_options(start_date, payload.days, slots_needed, by_user, strict_green=True, window_start_date=payload.window_start_date, window_end_date=payload.window_end_date, window_start_time=payload.window_start_time, window_end_time=payload.window_end_time)
-    return pure[:3] if pure else _collect_options(start_date, payload.days, slots_needed, by_user, strict_green=False, window_start_date=payload.window_start_date, window_end_date=payload.window_end_date, window_start_time=payload.window_start_time, window_end_time=payload.window_end_time)[:6]
+    pure = _collect_options(start_date, payload.days, slots_needed, by_user, locks, strict_green=True, window_start_date=payload.window_start_date, window_end_date=payload.window_end_date, window_start_time=payload.window_start_time, window_end_time=payload.window_end_time)
+    return pure[:3] if pure else _collect_options(start_date, payload.days, slots_needed, by_user, locks, strict_green=False, window_start_date=payload.window_start_date, window_end_date=payload.window_end_date, window_start_time=payload.window_start_time, window_end_time=payload.window_end_time)[:6]
 
 
-def _collect_options(start_date, days, slots_needed, by_user, strict_green, window_start_date=None, window_end_date=None, window_start_time=None, window_end_time=None):
+@router.get("/options", response_model=list[MatchOption])
+def match_times_get(
+    receiver_id: int,
+    duration_minutes: int,
+    from_date: str,
+    days: int = 7,
+    window_start_date: str | None = Query(default=None),
+    window_end_date: str | None = Query(default=None),
+    window_start_time: str | None = Query(default=None),
+    window_end_time: str | None = Query(default=None),
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+):
+    payload = MatchRequest(
+        receiver_id=receiver_id,
+        duration_minutes=duration_minutes,
+        from_date=from_date,
+        days=days,
+        window_start_date=window_start_date,
+        window_end_date=window_end_date,
+        window_start_time=window_start_time,
+        window_end_time=window_end_time,
+    )
+    return match_times(payload, user, db)
+
+
+def _invite_locks(db: Session, user_ids: list[int]) -> dict[int, list[tuple[datetime, datetime]]]:
+    """Pending locks only its sender; accepted locks both participants."""
+    locks = {user_id: [] for user_id in user_ids}
+    invites = db.scalars(select(Invite).where(
+        Invite.status.in_(["PENDING", "ACCEPTED"]),
+        or_(Invite.sender_id.in_(user_ids), Invite.receiver_id.in_(user_ids)),
+    )).all()
+    for invite in invites:
+        if invite.status == "PENDING" and invite.sender_id in locks:
+            locks[invite.sender_id].append((invite.start_at, invite.end_at))
+        elif invite.status == "ACCEPTED":
+            for participant_id in (invite.sender_id, invite.receiver_id):
+                if participant_id in locks:
+                    locks[participant_id].append((invite.start_at, invite.end_at))
+    return locks
+
+
+def _collect_options(start_date, days, slots_needed, by_user, locks, strict_green, window_start_date=None, window_end_date=None, window_start_time=None, window_end_time=None):
     result = []
     now = datetime.now()
     for offset in range(days):
@@ -53,7 +98,9 @@ def _collect_options(start_date, days, slots_needed, by_user, strict_green, wind
             for uid in by_user:
                 block = next((b for b in by_user[uid] if b.date == str(current) and b.start_time <= start < b.end_time), None)
                 statuses.append(block.status if block else "FLEXIBLE")
-            valid.append(in_window and (all(s == "FREE" for s in statuses) if strict_green else all(s != "HARD" for s in statuses)))
+            slot_end = slot_start + timedelta(minutes=15)
+            unlocked = all(not any(slot_start < end and slot_end > begin for begin, end in locks.get(uid, [])) for uid in by_user)
+            valid.append(in_window and unlocked and (all(s == "FREE" for s in statuses) if strict_green else all(s != "HARD" for s in statuses)))
         run = 0
         for index, okay in enumerate(valid + [False]):
             run = run + 1 if okay else 0
@@ -71,7 +118,8 @@ def _collect_options(start_date, days, slots_needed, by_user, strict_green, wind
 
 @router.get("", response_model=list[InvitePublic])
 def list_invites(user: User = Depends(current_user), db: Session = Depends(get_db)):
-    now = datetime.utcnow()
+    # 邀约时间当前按产品约定统一使用东八区本地时间保存。
+    now = datetime.now()
     expired = db.scalars(select(Invite).where(
         or_(Invite.sender_id == user.id, Invite.receiver_id == user.id),
         Invite.status == "PENDING", Invite.end_at <= now
@@ -98,7 +146,7 @@ def create_invite(payload: InviteCreate, user: User = Depends(current_user), db:
         raise HTTPException(403, "只有已同意的好友可以发起邀约")
     if payload.end_at <= payload.start_at:
         raise HTTPException(400, "结束时间必须晚于开始时间")
-    if payload.start_at <= datetime.utcnow():
+    if payload.start_at <= datetime.now():
         raise HTTPException(400, "不能邀约已经过去的时间")
     hard_event = db.scalar(select(CalendarEvent).where(
         CalendarEvent.user_id == user.id, CalendarEvent.status == "HARD",
@@ -106,6 +154,16 @@ def create_invite(payload: InviteCreate, user: User = Depends(current_user), db:
     ))
     if hard_event:
         raise HTTPException(409, "你的这段时间已经被其他硬性事务占用")
+    invite_conflict = db.scalar(select(Invite).where(
+        or_(
+            (Invite.sender_id == user.id) & (Invite.status == "PENDING"),
+            ((Invite.sender_id == user.id) | (Invite.receiver_id == user.id)) & (Invite.status == "ACCEPTED"),
+        ),
+        Invite.start_at < payload.end_at,
+        Invite.end_at > payload.start_at,
+    ))
+    if invite_conflict:
+        raise HTTPException(409, "你的这段时间已有待应答或已确认邀约")
     invite = Invite(sender_id=user.id, status="PENDING", **payload.model_dump())
     db.add(invite); db.commit(); db.refresh(invite)
     return _invite_payload(invite, db)
@@ -116,7 +174,7 @@ def respond(invite_id: int, payload: InviteResponse, user: User = Depends(curren
     invite = db.scalar(select(Invite).where(Invite.id == invite_id, or_(Invite.receiver_id == user.id, Invite.sender_id == user.id)))
     if not invite or invite.status != "PENDING":
         raise HTTPException(404, "待应答邀约不存在")
-    if invite.start_at <= datetime.utcnow():
+    if invite.start_at <= datetime.now():
         invite.status = "EXPIRED"
         db.commit()
         raise HTTPException(400, "该邀约时间已经过去")
@@ -131,6 +189,15 @@ def respond(invite_id: int, payload: InviteResponse, user: User = Depends(curren
         ))
         if conflict:
             raise HTTPException(409, "你的这段时间已经被硬性日程占用")
+        accepted_conflict = db.scalar(select(Invite).where(
+            Invite.id != invite.id,
+            Invite.status == "ACCEPTED",
+            or_(Invite.sender_id == user.id, Invite.receiver_id == user.id),
+            Invite.start_at < invite.end_at,
+            Invite.end_at > invite.start_at,
+        ))
+        if accepted_conflict:
+            raise HTTPException(409, "你的这段时间已有已确认邀约")
     invite.status = payload.status
     if payload.status == "ACCEPTED":
         conflicts = db.scalars(select(Invite).where(

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""互通日历本地后端：Python 标准库 + SQLite，无需安装第三方依赖。"""
+"""Tempo本地后端：Python 标准库 + SQLite，无需安装第三方依赖。"""
 import json
 import sqlite3
 from datetime import datetime
@@ -37,7 +37,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_OPTIONS(self): self.send_json({"ok": True})
     def do_GET(self):
         parsed = urlparse(self.path); query = parse_qs(parsed.query); conn = db()
-        if parsed.path == "/api/health": return self.send_json({"ok": True, "service": "hutong-calendar-local"})
+        if parsed.path == "/api/health": return self.send_json({"ok": True, "service": "tempo-calendar-local"})
         if parsed.path == "/api/events":
             user_id = query.get("user_id", ["me"])[0]
             rows = conn.execute("SELECT * FROM events WHERE user_id=? ORDER BY start", (user_id,)).fetchall()
@@ -67,5 +67,5 @@ class Handler(BaseHTTPRequestHandler):
         self.send_json({"error": "not found"}, 404)
 
 if __name__ == "__main__":
-    db().close(); print("Hutong Calendar backend: http://127.0.0.1:8765")
+    db().close(); print("Tempo Calendar backend: http://127.0.0.1:8765")
     ThreadingHTTPServer(("0.0.0.0", 8765), Handler).serve_forever()

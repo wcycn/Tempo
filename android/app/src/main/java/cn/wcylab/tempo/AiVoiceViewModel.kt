@@ -1,4 +1,4 @@
-package com.hutong.calendar
+package cn.wcylab.tempo
 
 import android.app.Application
 import android.media.AudioFormat
@@ -6,9 +6,9 @@ import android.media.AudioRecord
 import android.media.MediaRecorder
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.hutong.calendar.data.CalendarDraftDto
-import com.hutong.calendar.data.TempoApiFactory
-import com.hutong.calendar.data.TokenStore
+import cn.wcylab.tempo.data.CalendarDraftDto
+import cn.wcylab.tempo.data.TempoApiFactory
+import cn.wcylab.tempo.data.TokenStore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.Job
@@ -19,8 +19,9 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.MultipartBody
-import okhttp3.MediaType
-import okhttp3.RequestBody
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.asRequestBody
+import okhttp3.RequestBody.Companion.toRequestBody
 import retrofit2.HttpException
 import java.io.File
 import java.io.ByteArrayOutputStream
@@ -56,11 +57,11 @@ class AiVoiceViewModel(application: Application) : AndroidViewModel(application)
     @Volatile private var recordingActive = false
     private var recordingTimeoutJob: Job? = null
 
-    fun verifyAccess(code: String) {
-        if (code.isBlank()) return
+    fun verifyAccess(code: String?) {
+        val normalizedCode = code?.trim()?.takeIf { it.isNotEmpty() } ?: return
         viewModelScope.launch {
             _access.value = AiAccessState.Verifying
-            runCatching { api.verifyAiAccess(com.hutong.calendar.data.AiAccessVerifyRequestDto(code)) }
+            runCatching { api.verifyAiAccess(cn.wcylab.tempo.data.AiAccessVerifyRequestDto(normalizedCode)) }
                 .onSuccess { response -> tokenStore.saveAiAccessToken(response.accessToken); _access.value = AiAccessState.Enabled }
                 .onFailure { error -> _access.value = AiAccessState.Error(if (error is HttpException && error.code() == 403) "内测密码错误" else "AI 内测验证失败，请稍后重试") }
         }
@@ -141,9 +142,9 @@ class AiVoiceViewModel(application: Application) : AndroidViewModel(application)
                 val aiToken = tokenStore.getAiAccessToken() ?: error("请先在“我的”中完成 AI 内测验证")
                 val response = api.parseCalendarAudio(
                     aiToken,
-                    MultipartBody.Part.createFormData("file", file.name, RequestBody.create(MediaType.parse("audio/wav"), file)),
-                    RequestBody.create(MediaType.parse("text/plain"), ZoneId.systemDefault().id),
-                    RequestBody.create(MediaType.parse("text/plain"), LocalDate.now().toString())
+                    MultipartBody.Part.createFormData("file", file.name, file.asRequestBody("audio/wav".toMediaType())),
+                    ZoneId.systemDefault().id.toRequestBody("text/plain".toMediaType()),
+                    LocalDate.now().toString().toRequestBody("text/plain".toMediaType())
                 )
                 _state.value = AiVoiceState.Ready(response.draft, response.transcript)
             } catch (error: Exception) {

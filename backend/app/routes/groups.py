@@ -418,11 +418,16 @@ def leave_activity(activity_id: int, user: User = Depends(current_user), db: Ses
     if not activity or not _is_member(activity.group_id, user.id, db):
         raise HTTPException(404, "活动不存在或你不是群组成员")
     row = db.scalar(select(GroupActivityParticipant).where(GroupActivityParticipant.activity_id == activity_id, GroupActivityParticipant.user_id == user.id))
-    if not row:
-        raise HTTPException(404, "你尚未参与接龙")
     if activity.status != "OPEN":
         raise HTTPException(409, "活动已进入匹配或确认阶段，暂不能退出")
-    db.delete(row)
+    # “不参加”需要被服务端记住，避免用户不操作时一直留在候选池。
+    # 通过再次点击“我有空”可以重新加入，适用于误触或临时改变主意。
+    if not row:
+        row = GroupActivityParticipant(activity_id=activity_id, user_id=user.id, status="DECLINED")
+        db.add(row)
+    else:
+        row.status = "DECLINED"
+        row.responded_at = datetime.utcnow()
     db.commit()
     return _public_activity(activity, db)
 
